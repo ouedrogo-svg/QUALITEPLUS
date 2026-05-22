@@ -591,7 +591,11 @@ def formateur_exam_create(request):
             return _fredirect(request, "exam_list")
     else:
         form = MonthlyExamForm(
-            initial={"year": today.year, "month": today.month},
+            initial={
+                "year": today.year,
+                "month": today.month,
+                "duration_minutes": 60,
+            },
             formateur_user=request.user,
             assigned_only=_assigned_only(request),
         )

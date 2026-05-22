@@ -11,9 +11,6 @@
   </div>
   <h1>{{ correction.title|default:correction.period_label }}</h1>
   <p class="meta">{{ category.name }} — {{ correction.period_label }}</p>
-  <ul class="exam-info-list meta">
-    <li>Durée du quiz : <strong>{{ correction.duration_minutes }} minute{{ correction.duration_minutes|pluralize }}</strong></li>
-  </ul>
   <p class="hero-actions document-actions">
     {% if correction.pdf %}
       <a class="btn btn-secondary" href="{% url 'courses:correction_pdf_download' category.slug correction.year correction.month correction.pk %}">Télécharger le corrigé (PDF)</a>

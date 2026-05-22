@@ -73,7 +73,19 @@ DATABASES = {
 """
 
 DATABASES = {
-    'default': dj_database_url.parse(config('DATABASE_URL'))
+    "default": dj_database_url.parse(config("DATABASE_URL")),
+}
+
+# Connexion persistante (surtout si PostgreSQL distant) : moins de latence par page.
+_db = DATABASES["default"]
+if "postgresql" in _db.get("ENGINE", ""):
+    _db.setdefault("CONN_MAX_AGE", 60)
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "cour-ligne",
+    }
 }
 
 

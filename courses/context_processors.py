@@ -1,6 +1,18 @@
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 
 from .models import get_user_subscribed_months, user_has_active_subscription
+
+_ADMIN_EXAM_RECAP_CACHE_KEY = "courses:admin_exam_recap_tree_compact"
+_ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY = "courses:admin_subscription_recap_tree_compact"
+_ADMIN_RECAP_CACHE_SECONDS = 300
+
+
+def _admin_paths_needing_recap(path: str) -> bool:
+    """Récap admin uniquement sur l’accueil (évite de ralentir chaque page /admin/…)."""
+    if path in ("/admin/", "/admin"):
+        return True
+    return False
 
 
 def subscription(request):
@@ -27,19 +39,23 @@ def formateur_nav(request):
             "show_formateur_space": True,
             "show_formateur_contenu_space": True,
         }
-    try:
-        profile = user.profile
-        full = bool(profile.is_platform_formateur)
-        contenu = bool(profile.is_content_formateur)
-        return {
-            "show_formateur_space": full,
-            "show_formateur_contenu_space": contenu and not full,
-        }
-    except ObjectDoesNotExist:
+    profile = getattr(user, "profile", None)
+    if profile is None:
+        try:
+            profile = user.profile
+        except ObjectDoesNotExist:
+            profile = None
+    if profile is None:
         return {
             "show_formateur_space": False,
             "show_formateur_contenu_space": False,
         }
+    full = bool(profile.is_platform_formateur)
+    contenu = bool(profile.is_content_formateur)
+    return {
+        "show_formateur_space": full,
+        "show_formateur_contenu_space": contenu and not full,
+    }
 
 
 def formateur_space(request):
@@ -55,21 +71,36 @@ def formateur_space(request):
 
 
 def admin_exam_recap(request):
-    """Récapitulatifs dans l’interface d’administration Django."""
+    """Récapitulatifs compacts sur l’accueil admin uniquement."""
     path = getattr(request, "path", "") or ""
-    if not path.startswith("/admin/") or "/login" in path:
-        return {}
+    if not _admin_paths_needing_recap(path):
+        return {"show_admin_recap_header": False}
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated or not user.is_staff:
-        return {}
+        return {"show_admin_recap_header": False}
     from .exam_results import build_admin_exam_recap_tree
     from .subscription_recap import (
         build_admin_subscription_recap_tree,
         subscription_recap_global_export_url,
     )
 
+    exam_recap = cache.get(_ADMIN_EXAM_RECAP_CACHE_KEY)
+    if exam_recap is None:
+        exam_recap = build_admin_exam_recap_tree(compact=True)
+        cache.set(_ADMIN_EXAM_RECAP_CACHE_KEY, exam_recap, _ADMIN_RECAP_CACHE_SECONDS)
+
+    subscription_recap = cache.get(_ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY)
+    if subscription_recap is None:
+        subscription_recap = build_admin_subscription_recap_tree(include_rows=False)
+        cache.set(
+            _ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY,
+            subscription_recap,
+            _ADMIN_RECAP_CACHE_SECONDS,
+        )
+
     return {
-        "admin_exam_recap": build_admin_exam_recap_tree(),
-        "admin_subscription_recap": build_admin_subscription_recap_tree(),
+        "show_admin_recap_header": True,
+        "admin_exam_recap": exam_recap,
+        "admin_subscription_recap": subscription_recap,
         "admin_subscription_recap_export_url": subscription_recap_global_export_url(),
     }

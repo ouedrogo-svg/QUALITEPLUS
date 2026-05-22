@@ -44,6 +44,12 @@
                           {% endfor %}
                         </tbody>
                       </table>
+                    {% elif exam.n_candidates %}
+                      <p class="admin-exam-recap__empty">
+                        {{ exam.n_candidates }} candidat{{ exam.n_candidates|pluralize }} —
+                        <a href="{{ exam.change_url }}">voir le détail</a> ou
+                        <a href="{{ exam.export_url }}">Excel</a>.
+                      </p>
                     {% else %}
                       <p class="admin-exam-recap__empty">Aucun résultat transmis pour cet examen.</p>
                     {% endif %}

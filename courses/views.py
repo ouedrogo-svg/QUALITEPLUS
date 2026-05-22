@@ -35,12 +35,8 @@ from .models import (
 from .quiz_import import QUIZ_QUESTION_NUMBER_MAX, strip_nb_references
 from .quiz_queries import fetch_correction_quiz, fetch_exam_quiz, sorted_question_options
 from .exam_quiz_timing import (
-    clear_correction_quiz_started,
-    correction_quiz_time_remaining_seconds,
-    ensure_correction_quiz_started,
     ensure_exam_started,
     exam_time_remaining_seconds,
-    is_correction_quiz_time_expired,
     is_exam_time_expired,
     record_exam_attempt,
     user_has_admin_result,
@@ -584,16 +580,8 @@ def correction_quiz(request, category_slug, year, month, pk):
     score_points = None
     show_results = False
     if request.method == "POST":
-        if is_correction_quiz_time_expired(request, correction):
-            messages.warning(
-                request,
-                "Le temps imparti est écoulé. Votre copie a été enregistrée avec les réponses cochées.",
-            )
         show_results = True
         score_points, score_percent, results = process_quiz_post(request, questions)
-        clear_correction_quiz_started(request, correction)
-    else:
-        ensure_correction_quiz_started(request, correction)
 
     return render(
         request,
@@ -611,11 +599,7 @@ def correction_quiz(request, category_slug, year, month, pk):
             "score_percent": score_percent,
             "show_results": show_results,
             "is_exam_quiz": False,
-            "show_quiz_timer": True,
-            "quiz_duration_minutes": correction.duration_minutes,
-            "quiz_time_remaining_seconds": correction_quiz_time_remaining_seconds(
-                request, correction
-            ),
+            "show_quiz_timer": False,
             "list_url_name": "courses:category_corrections",
             "detail_url_name": "courses:correction_detail",
             "quiz_url_name": "courses:correction_quiz",

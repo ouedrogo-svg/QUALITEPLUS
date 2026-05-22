@@ -101,7 +101,10 @@ def _month_total(rows: list[dict]) -> Decimal:
 
 
 def build_subscription_recap_tree(
-    *, month_export_url, category_ids: set[int] | None = None
+    *,
+    month_export_url,
+    category_ids: set[int] | None = None,
+    include_rows: bool = True,
 ) -> list[dict]:
     """
     Récapitulatif par mois calendaire de validation (decided_at).
@@ -125,7 +128,7 @@ def build_subscription_recap_tree(
                 "year": year,
                 "month": month,
                 "label": f"{french_month_name(month)} {year}",
-                "rows": month_rows,
+                "rows": month_rows if include_rows else [],
                 "n_subscriptions": len(month_rows),
                 "total_amount": _month_total(month_rows),
                 "total_display": _format_amount(_month_total(month_rows)),
@@ -146,9 +149,12 @@ def subscription_recap_month_export_url(year: int, month: int) -> str:
     )
 
 
-def build_admin_subscription_recap_tree() -> list[dict]:
+def build_admin_subscription_recap_tree(*, include_rows: bool = True) -> list[dict]:
     """Récap admin : liens d’export vers les vues ``admin``."""
-    return build_subscription_recap_tree(month_export_url=subscription_recap_month_export_url)
+    return build_subscription_recap_tree(
+        month_export_url=subscription_recap_month_export_url,
+        include_rows=include_rows,
+    )
 
 
 def formateur_subscription_recap_global_export_url() -> str:

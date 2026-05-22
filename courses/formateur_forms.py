@@ -55,14 +55,13 @@ class MonthlyCourseContentForm(forms.ModelForm):
 class MonthlyCorrectionForm(forms.ModelForm):
     class Meta:
         model = MonthlyCorrection
-        fields = ("category", "year", "month", "title", "pdf", "duration_minutes")
+        fields = ("category", "year", "month", "title", "pdf")
         widgets = {
             "category": forms.Select(attrs=_ctrl),
             "year": forms.NumberInput(attrs=_ctrl),
             "month": forms.Select(choices=MONTH_CHOICES, attrs=_ctrl),
             "title": forms.TextInput(attrs=_ctrl),
             "pdf": forms.FileInput(attrs=_ctrl),
-            "duration_minutes": forms.NumberInput(attrs={**_ctrl, "min": 1}),
         }
 
     def __init__(self, *args, formateur_user=None, assigned_only=False, **kwargs):
@@ -80,8 +79,8 @@ class MonthlyExamForm(forms.ModelForm):
             "year",
             "month",
             "title",
-            "pdf",
             "duration_minutes",
+            "pdf",
             "results_collection_days",
         )
         widgets = {
@@ -89,9 +88,15 @@ class MonthlyExamForm(forms.ModelForm):
             "year": forms.NumberInput(attrs=_ctrl),
             "month": forms.Select(choices=MONTH_CHOICES, attrs=_ctrl),
             "title": forms.TextInput(attrs=_ctrl),
-            "pdf": forms.FileInput(attrs=_ctrl),
             "duration_minutes": forms.NumberInput(attrs={**_ctrl, "min": 1}),
+            "pdf": forms.FileInput(attrs=_ctrl),
             "results_collection_days": forms.NumberInput(attrs={**_ctrl, "min": 1}),
+        }
+        help_texts = {
+            "duration_minutes": (
+                "Temps imparti au candidat pour valider le quiz interactif "
+                "(chronomètre affiché pendant l’épreuve)."
+            ),
         }
 
     def __init__(self, *args, formateur_user=None, assigned_only=False, **kwargs):

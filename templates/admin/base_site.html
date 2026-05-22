@@ -17,7 +17,7 @@
 
 {% block header %}
 {{ block.super }}
-{% if user.is_staff and not is_popup %}
+{% if show_admin_recap_header and user.is_staff and not is_popup %}
   {% include "admin/includes/subscription_recap.html" %}
   {% include "admin/includes/exam_recap.html" %}
 {% endif %}

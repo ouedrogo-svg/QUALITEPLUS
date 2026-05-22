@@ -73,9 +73,10 @@ def ranked_exam_results(exam: MonthlyExam) -> list[dict]:
     return _rank_rows_from_user_scores(scores, users)
 
 
-def build_admin_exam_recap_tree() -> list[dict]:
+def build_admin_exam_recap_tree(*, compact: bool = False) -> list[dict]:
     """
     Récapitulatif hiérarchique pour l’en-tête admin : catégorie → mois → examen → classement.
+    ``compact=True`` : sans tableaux de notes (accueil admin plus rapide).
     """
     from collections import defaultdict
 
@@ -100,12 +101,14 @@ def build_admin_exam_recap_tree() -> list[dict]:
         scores_by_exam[row["exam_id"]][row["user_id"]] = row["note"]
         user_ids.add(row["user_id"])
 
-    users = {
-        u.pk: u
-        for u in User.objects.filter(pk__in=user_ids).only(
-            "id", "first_name", "last_name", "username"
-        )
-    }
+    users = {}
+    if not compact and user_ids:
+        users = {
+            u.pk: u
+            for u in User.objects.filter(pk__in=user_ids).only(
+                "id", "first_name", "last_name", "username"
+            )
+        }
 
     categories: dict[str, dict] = {}
     for exam in exams:
@@ -120,13 +123,18 @@ def build_admin_exam_recap_tree() -> list[dict]:
                 "exams": [],
             }
         exam_scores = scores_by_exam.get(exam.pk, {})
-        rows = _rank_rows_from_user_scores(exam_scores, users)
         title = (exam.title or "").strip() or f"Examen #{exam.pk}"
+        if compact:
+            rows = []
+            n_candidates = len(exam_scores)
+        else:
+            rows = _rank_rows_from_user_scores(exam_scores, users)
+            n_candidates = len(rows)
         months[month_key]["exams"].append(
             {
                 "title": title,
                 "display_title": _exam_display_title(exam),
-                "n_candidates": len(rows),
+                "n_candidates": n_candidates,
                 "rows": rows,
                 "change_url": reverse(
                     "admin:courses_monthlyexam_change", args=[exam.pk]

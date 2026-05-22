@@ -105,7 +105,8 @@ class CorrectionQuizInline(admin.StackedInline):
                 "fields": ("title", "quiz_last_built_for_pdf_key"),
                 "description": (
                     "Le quiz est construit à partir du <strong>PDF du corrigé</strong> (champ « fichier PDF » "
-                    "dans la section du dessus). Ne téléversez <strong>pas</strong> le PDF ici."
+                    "dans la section du dessus). Ne téléversez <strong>pas</strong> le PDF ici. "
+                    "Les quiz de correction ne sont pas chronométrés (contrairement aux examens)."
                 ),
             },
         ),
@@ -133,9 +134,9 @@ class MonthlyCorrectionAdmin(admin.ModelAdmin):
         (
             None,
             {
-                "fields": ("category", "year", "month", "title", "pdf", "duration_minutes"),
+                "fields": ("category", "year", "month", "title", "pdf"),
                 "description": (
-                    "Téléversez le corrigé en PDF. Le quiz interactif (même présentation que les examens) "
+                    "Téléversez le corrigé en PDF. Le quiz interactif (sans limite de temps, contrairement aux examens) "
                     "est généré automatiquement à partir des "
                     "<strong>tableaux</strong> présents dans ce PDF. Formats reconnus : tableau QCM classique "
                     "(question + plusieurs colonnes de propositions + réponses en indices ou lettres), ou "
@@ -255,8 +256,8 @@ class MonthlyExamAdmin(admin.ModelAdmin):
                     "year",
                     "month",
                     "title",
-                    "pdf",
                     "duration_minutes",
+                    "pdf",
                     "results_collection_days",
                 ),
                 "description": (
