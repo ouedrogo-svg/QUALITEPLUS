@@ -15,11 +15,30 @@
 {% endif %}
 {% endblock %}
 
-{% block header %}
+{% block userlinks %}
+{% if user.is_staff %}
+  <a href="{% url 'admin_exam_results_recap' %}">{% translate "Résultats examens" %}</a> /
+{% endif %}
 {{ block.super }}
-{% if show_admin_recap_header and user.is_staff and not is_popup %}
-  {% include "admin/includes/subscription_recap.html" %}
-  {% include "admin/includes/exam_recap.html" %}
+{% endblock %}
+
+{% block nav-breadcrumbs %}
+{{ block.super }}
+{% if user.is_staff and not is_popup and show_admin_recap_banner %}
+  <div class="admin-recap-banner">
+    {% if show_admin_exam_recap %}
+      {% include "admin/includes/exam_recap.html" %}
+    {% else %}
+      <p class="admin-exam-recap-link">
+        <a class="button" href="{% url 'admin_exam_results_recap' %}">
+          Récapitulatif des résultats d’examens (catégorie → mois → examen : nom, prénom, note, 1er/2e/3e…)
+        </a>
+      </p>
+    {% endif %}
+    {% if show_admin_subscription_recap %}
+      {% include "admin/includes/subscription_recap.html" %}
+    {% endif %}
+  </div>
 {% endif %}
 {% endblock %}
 

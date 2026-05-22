@@ -1,4 +1,4 @@
-<section class="admin-exam-recap" aria-label="Récapitulatif des résultats d’examens">
+<section class="admin-exam-recap admin-exam-recap--page" aria-label="Récapitulatif des résultats d’examens">
   <details class="admin-exam-recap__toggle" open>
     <summary class="admin-exam-recap__summary">
       Récapitulatif des examens
@@ -39,17 +39,11 @@
                               <td>{{ row.nom }}</td>
                               <td>{{ row.prenom }}</td>
                               <td class="num">{{ row.note }}</td>
-                              <td class="num">{{ row.classement }}</td>
+                              <td class="num">{{ row.classement_display }}</td>
                             </tr>
                           {% endfor %}
                         </tbody>
                       </table>
-                    {% elif exam.n_candidates %}
-                      <p class="admin-exam-recap__empty">
-                        {{ exam.n_candidates }} candidat{{ exam.n_candidates|pluralize }} —
-                        <a href="{{ exam.change_url }}">voir le détail</a> ou
-                        <a href="{{ exam.export_url }}">Excel</a>.
-                      </p>
                     {% else %}
                       <p class="admin-exam-recap__empty">Aucun résultat transmis pour cet examen.</p>
                     {% endif %}

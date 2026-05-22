@@ -3,16 +3,25 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from .models import get_user_subscribed_months, user_has_active_subscription
 
-_ADMIN_EXAM_RECAP_CACHE_KEY = "courses:admin_exam_recap_tree_compact"
+_ADMIN_EXAM_RECAP_CACHE_KEY = "courses:admin_exam_recap_tree_full"
 _ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY = "courses:admin_subscription_recap_tree_compact"
 _ADMIN_RECAP_CACHE_SECONDS = 300
 
 
-def _admin_paths_needing_recap(path: str) -> bool:
-    """Récap admin uniquement sur l’accueil (évite de ralentir chaque page /admin/…)."""
-    if path in ("/admin/", "/admin"):
-        return True
-    return False
+def _is_admin_index(path: str) -> bool:
+    return path in ("/admin/", "/admin")
+
+
+def _is_admin_exam_recap_page(path: str) -> bool:
+    return path.rstrip("/") == "/admin/exam-results-recap"
+
+
+def _is_admin_area(path: str) -> bool:
+    if not path.startswith("/admin"):
+        return False
+    if "/login" in path or "jsi18n" in path:
+        return False
+    return True
 
 
 def subscription(request):
@@ -71,36 +80,53 @@ def formateur_space(request):
 
 
 def admin_exam_recap(request):
-    """Récapitulatifs compacts sur l’accueil admin uniquement."""
+    """Récap examens et abonnements dans l’interface admin."""
     path = getattr(request, "path", "") or ""
-    if not _admin_paths_needing_recap(path):
-        return {"show_admin_recap_header": False}
+    if not _is_admin_area(path):
+        return {}
+
     user = getattr(request, "user", None)
     if not user or not user.is_authenticated or not user.is_staff:
-        return {"show_admin_recap_header": False}
-    from .exam_results import build_admin_exam_recap_tree
-    from .subscription_recap import (
-        build_admin_subscription_recap_tree,
-        subscription_recap_global_export_url,
-    )
+        return {}
 
-    exam_recap = cache.get(_ADMIN_EXAM_RECAP_CACHE_KEY)
-    if exam_recap is None:
-        exam_recap = build_admin_exam_recap_tree(compact=True)
-        cache.set(_ADMIN_EXAM_RECAP_CACHE_KEY, exam_recap, _ADMIN_RECAP_CACHE_SECONDS)
+    ctx = {
+        "show_admin_recap_banner": True,
+        "show_admin_exam_recap": False,
+        "show_admin_subscription_recap": False,
+        "admin_exam_recap": [],
+        "admin_subscription_recap": [],
+        "admin_subscription_recap_export_url": "",
+    }
 
-    subscription_recap = cache.get(_ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY)
-    if subscription_recap is None:
-        subscription_recap = build_admin_subscription_recap_tree(include_rows=False)
-        cache.set(
-            _ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY,
-            subscription_recap,
-            _ADMIN_RECAP_CACHE_SECONDS,
+    if _is_admin_exam_recap_page(path):
+        from .admin_views import get_admin_exam_recap_tree
+
+        ctx["show_admin_exam_recap"] = True
+        ctx["admin_exam_recap"] = get_admin_exam_recap_tree(
+            force_refresh=request.GET.get("refresh") == "1"
+        )
+        return ctx
+
+    if _is_admin_index(path):
+        from .subscription_recap import (
+            build_admin_subscription_recap_tree,
+            subscription_recap_global_export_url,
         )
 
-    return {
-        "show_admin_recap_header": True,
-        "admin_exam_recap": exam_recap,
-        "admin_subscription_recap": subscription_recap,
-        "admin_subscription_recap_export_url": subscription_recap_global_export_url(),
-    }
+        subscription_recap = cache.get(_ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY)
+        if subscription_recap is None:
+            subscription_recap = build_admin_subscription_recap_tree(
+                include_rows=False
+            )
+            cache.set(
+                _ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY,
+                subscription_recap,
+                _ADMIN_RECAP_CACHE_SECONDS,
+            )
+        ctx["show_admin_subscription_recap"] = True
+        ctx["admin_subscription_recap"] = subscription_recap
+        ctx["admin_subscription_recap_export_url"] = (
+            subscription_recap_global_export_url()
+        )
+
+    return ctx

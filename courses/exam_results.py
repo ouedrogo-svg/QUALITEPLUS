@@ -15,6 +15,15 @@ User = get_user_model()
 RESULT_COLUMNS = ("Nom", "Prénom", "Note", "Classement")
 
 
+def classement_display_fr(rank: int) -> str:
+    """Libellé français : 1er, 2e, 3e…"""
+    if rank <= 0:
+        return "—"
+    if rank == 1:
+        return "1er"
+    return f"{rank}e"
+
+
 def _exam_display_title(exam: MonthlyExam) -> str:
     title = (exam.title or "").strip()
     if title:
@@ -36,6 +45,7 @@ def _rank_rows_from_user_scores(
                 "prenom": (user.first_name or "").strip() or "—",
                 "note": note,
                 "classement": 0,
+                "classement_display": "—",
             }
         )
     rows.sort(key=lambda r: (-r["note"], r["nom"].lower(), r["prenom"].lower()))
@@ -44,6 +54,7 @@ def _rank_rows_from_user_scores(
         if index == 0 or row["note"] != rows[index - 1]["note"]:
             rank = index + 1
         row["classement"] = rank
+        row["classement_display"] = classement_display_fr(rank)
     return rows
 
 
@@ -194,8 +205,15 @@ def build_exam_results_xlsx(exam: MonthlyExam) -> bytes:
         cell.fill = PatternFill("solid", fgColor="E2E8F0")
         cell.alignment = Alignment(horizontal="center")
 
-    for nom, prenom, note, classement in exam_results_spreadsheet_rows(exam):
-        ws.append([nom, prenom, note, classement])
+    for row in ranked_exam_results(exam):
+        ws.append(
+            [
+                row["nom"],
+                row["prenom"],
+                row["note"],
+                row["classement_display"],
+            ]
+        )
 
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 22

@@ -361,7 +361,7 @@ class MonthlyExamAdmin(admin.ModelAdmin):
                 cell,
                 row["note"],
                 cell,
-                row["classement"],
+                row["classement_display"],
             )
             for index, row in enumerate(rows)
         )

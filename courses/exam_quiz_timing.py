@@ -138,4 +138,8 @@ def record_exam_attempt(
         sent_to_admin=sent,
     )
     clear_exam_started(request, exam)
+    if sent:
+        from .admin_views import invalidate_admin_exam_recap_cache
+
+        invalidate_admin_exam_recap_cache()
     return attempt

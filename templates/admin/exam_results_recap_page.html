@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; Récapitulatif des résultats d’examens
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Récapitulatif des résultats d’examens</h1>
+  <p class="help">
+    Regroupement par <strong>catégorie</strong>, par <strong>mois</strong> et par <strong>examen</strong>.
+    Classement (1er, 2e, 3e…) d’après la note — premières compositions transmises à l’administrateur uniquement.
+    <a href="?refresh=1">Actualiser les données</a>
+  </p>
+  {% if admin_exam_recap %}
+    {% include "admin/includes/exam_recap.html" %}
+  {% else %}
+    <p class="admin-exam-recap__empty">Aucun examen mensuel enregistré.</p>
+  {% endif %}
+</div>
+{% endblock %}
