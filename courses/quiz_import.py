@@ -9,19 +9,32 @@ import unicodedata
 from collections import Counter
 from typing import BinaryIO
 
-# Corrigés type concours : colonne « N° d’ordre » = numéros 1 à 60 uniquement.
+# Numéros d’ordre du PDF : 1 … N (souvent 60 ; peut dépasser 60 si le corrigé est plus long).
 QUIZ_QUESTION_NUMBER_MIN = 1
-QUIZ_QUESTION_NUMBER_MAX = 60
+QUIZ_QUESTION_NUMBER_DEFAULT = 60
+QUIZ_QUESTION_NUMBER_ABSOLUTE_MAX = 300
+# Rétrocompatibilité (barème par défaut quand le quiz est vide).
+QUIZ_QUESTION_NUMBER_MAX = QUIZ_QUESTION_NUMBER_DEFAULT
 # QCM : exactement 4 propositions A–D (comme dans le PDF / corrigé officiel).
 QUIZ_MAX_OPTIONS = 4
 
 
 def _valid_question_number(n: int | None) -> bool:
-    return isinstance(n, int) and QUIZ_QUESTION_NUMBER_MIN <= n <= QUIZ_QUESTION_NUMBER_MAX
+    return (
+        isinstance(n, int)
+        and QUIZ_QUESTION_NUMBER_MIN <= n <= QUIZ_QUESTION_NUMBER_ABSOLUTE_MAX
+    )
+
+
+def quiz_question_count_for_scoring(question_count: int) -> int:
+    """Nombre de questions pour la barre de progression et le score (1 pt / question)."""
+    if question_count > 0:
+        return question_count
+    return QUIZ_QUESTION_NUMBER_DEFAULT
 
 
 def _finalize_quiz_specs(specs: list[dict]) -> list[dict]:
-    """Une question par numéro d’ordre valide (1–60), triée par numéro."""
+    """Une question par numéro d’ordre valide, triée par numéro (1 … N selon le PDF)."""
     by_number: dict[int, dict] = {}
     for spec in specs:
         n = spec.get("number")
@@ -352,7 +365,7 @@ def _correct_indices_from_rep_vs_options(embedded: list[str], rep_cell: str) -> 
 
 
 def _parse_ordre_cell(cell: str) -> int | None:
-    """Numéro de question depuis la colonne « N° d’ordre » (uniquement 1 à 60)."""
+    """Numéro de question depuis la colonne « N° d’ordre » (1 … 300)."""
     t = (cell or "").strip()
     if not t:
         return None
@@ -400,7 +413,7 @@ def _norm_column_header_suggests_ordre(n: str) -> bool:
 
 
 def _column_data_looks_like_ordre_index(data_rows: list[list[str]], col_j: int) -> bool:
-    """Heuristique : la colonne contient surtout des numéros d’ordre 1–60."""
+    """Heuristique : la colonne contient surtout des numéros d’ordre."""
     sample = [r for r in data_rows[:30] if r and len(r) > col_j]
     if len(sample) < 2:
         return False
@@ -616,7 +629,7 @@ def _table_correction_layout(rows: list[list[str]]) -> tuple[int, int, int] | No
 
 
 def _score_correction_table_rows(rows: list[list[str]]) -> int:
-    """Nombre de N° d’ordre valides (1–60) dans le tableau."""
+    """Nombre de N° d’ordre valides dans le tableau."""
     layout = _table_correction_layout(rows)
     if not layout:
         return 0

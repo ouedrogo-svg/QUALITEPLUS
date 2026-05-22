@@ -9,7 +9,6 @@ from collections import defaultdict
 from django.core.cache import cache
 
 from .quiz_import import (
-    QUIZ_QUESTION_NUMBER_MAX,
     _block_part_fingerprint,
     _content_column_indices,
     _enrich_spec_with_continuation,
@@ -231,20 +230,20 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
 
 
 def _score_quiz_specs(specs: list[dict]) -> tuple[int, int, int]:
-    """Plus haut = mieux : couverture 1–60, puis nombre de questions."""
+    """Plus haut = mieux : couverture des N°, puis nombre de questions, puis max N°."""
     if not specs:
         return (0, 0, 0)
     numbers = {s["number"] for s in specs if _valid_question_number(s.get("number"))}
     coverage = len(numbers)
     n = len(specs)
-    ideal_gap = abs(n - QUIZ_QUESTION_NUMBER_MAX)
-    return (coverage, n, -ideal_gap)
+    max_n = max(numbers) if numbers else 0
+    return (coverage, n, max_n)
 
 
 def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
     """
     Extraction conforme au PDF : fusionne toutes les sources (pages + tableaux),
-    une entrée par numéro d’ordre (1–60) pour ne pas perdre la dernière question isolée.
+    une entrée par numéro d’ordre du PDF (y compris au-delà de 60) pour ne pas perdre de questions.
     """
     try:
         by_number: dict[int, dict] = {}

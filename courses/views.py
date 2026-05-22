@@ -32,7 +32,7 @@ from .models import (
     user_has_month_access,
 )
 
-from .quiz_import import QUIZ_QUESTION_NUMBER_MAX, strip_nb_references
+from .quiz_import import quiz_question_count_for_scoring, strip_nb_references
 from .quiz_queries import fetch_correction_quiz, fetch_exam_quiz, sorted_question_options
 from .exam_quiz_timing import (
     ensure_exam_started,
@@ -57,7 +57,7 @@ def _strip_legacy_question_prefix(prompt: str) -> str:
 def _annotate_quiz_questions_for_template(questions) -> None:
     """Prépare affichage A) B) C) D) et numéro = N° d’ordre du corrigé (cases à cocher pour toutes les questions)."""
     for q in questions:
-        q.display_number = min(max(q.order + 1, 1), 60)
+        q.display_number = max(q.order + 1, 1)
         q.prompt = _strip_legacy_question_prefix(strip_nb_references(q.prompt))
         q.options_lettered = []
         for i, o in enumerate(sorted_question_options(q)):
@@ -410,6 +410,7 @@ def exam_quiz(request, category_slug, year, month, pk):
         return redirect(exam.get_absolute_url())
 
     _annotate_quiz_questions_for_template(questions)
+    quiz_total = quiz_question_count_for_scoring(len(questions))
 
     results = None
     score_percent = None
@@ -425,7 +426,9 @@ def exam_quiz(request, category_slug, year, month, pk):
                 "Le temps imparti est écoulé. Votre copie a été enregistrée avec les réponses cochées.",
             )
         show_results = True
-        score_points, score_percent, results = process_quiz_post(request, questions)
+        score_points, score_percent, results = process_quiz_post(
+            request, questions, score_max_points=quiz_total
+        )
         attempt = record_exam_attempt(
             request, exam, request.user, score_points, score_percent
         )
@@ -454,10 +457,10 @@ def exam_quiz(request, category_slug, year, month, pk):
             "document_kind": "Examen",
             "quiz": quiz,
             "questions": questions,
-            "quiz_progress_total": QUIZ_QUESTION_NUMBER_MAX,
+            "quiz_progress_total": quiz_total,
             "results": results,
             "score_points": score_points,
-            "score_max_points": QUIZ_QUESTION_NUMBER_MAX,
+            "score_max_points": quiz_total,
             "score_percent": score_percent,
             "show_results": show_results,
             "is_exam_quiz": True,
@@ -574,6 +577,7 @@ def correction_quiz(request, category_slug, year, month, pk):
         return redirect(correction.get_absolute_url())
 
     _annotate_quiz_questions_for_template(questions)
+    quiz_total = quiz_question_count_for_scoring(len(questions))
 
     results = None
     score_percent = None
@@ -581,7 +585,9 @@ def correction_quiz(request, category_slug, year, month, pk):
     show_results = False
     if request.method == "POST":
         show_results = True
-        score_points, score_percent, results = process_quiz_post(request, questions)
+        score_points, score_percent, results = process_quiz_post(
+            request, questions, score_max_points=quiz_total
+        )
 
     return render(
         request,
@@ -592,10 +598,10 @@ def correction_quiz(request, category_slug, year, month, pk):
             "document_kind": "Corrigé",
             "quiz": quiz,
             "questions": questions,
-            "quiz_progress_total": QUIZ_QUESTION_NUMBER_MAX,
+            "quiz_progress_total": quiz_total,
             "results": results,
             "score_points": score_points,
-            "score_max_points": QUIZ_QUESTION_NUMBER_MAX,
+            "score_max_points": quiz_total,
             "score_percent": score_percent,
             "show_results": show_results,
             "is_exam_quiz": False,

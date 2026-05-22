@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .quiz_import import QUIZ_QUESTION_NUMBER_MAX
+from .quiz_import import quiz_question_count_for_scoring
 from .quiz_queries import sorted_question_options
 
 
@@ -13,9 +13,16 @@ def quiz_answer_earns_point(selected_ids: set[int], correct_ids: set[int]) -> bo
     return selected_ids == correct_ids
 
 
-def process_quiz_post(request, questions) -> tuple[int, float, list[dict]]:
-    """Calcule le score (1 pt / question, sur 60) et les résultats détaillés."""
+def process_quiz_post(
+    request, questions, *, score_max_points: int | None = None
+) -> tuple[int, float, list[dict]]:
+    """Calcule le score (1 pt / question) et les résultats détaillés."""
 
+    total = (
+        score_max_points
+        if score_max_points is not None
+        else quiz_question_count_for_scoring(len(questions))
+    )
     score_points = 0
     results = []
     for q in questions:
@@ -50,7 +57,7 @@ def process_quiz_post(request, questions) -> tuple[int, float, list[dict]]:
                 "options_review": lettered,
             }
         )
-    score_percent = round(100 * score_points / QUIZ_QUESTION_NUMBER_MAX, 1)
+    score_percent = round(100 * score_points / total, 1) if total else 0.0
     return score_points, score_percent, results
 
 
