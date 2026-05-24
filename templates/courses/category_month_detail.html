@@ -64,9 +64,8 @@
             {% if exam.title %}{{ exam.title }}{% else %}Examen #{{ exam.pk }}{% endif %}
           </a>
           {% if exam.n_quiz_questions %}
-            <a class="btn btn-primary btn-sm" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">Quiz ({{ exam.n_quiz_questions }} q.)</a>
+            <a class="btn btn-primary btn-sm" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">Passer le Quiz ({{ exam.n_quiz_questions }} q.)</a>
           {% endif %}
-          <a class="btn btn-ghost btn-sm" href="{% url 'courses:exam_pdf_download' category.slug exam.year exam.month exam.pk %}">PDF</a>
         </li>
       {% endfor %}
     </ul>
