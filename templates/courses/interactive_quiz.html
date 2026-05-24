@@ -107,10 +107,12 @@
         <p class="quiz-submit-hint">1 point par question si vous cochez exactement toutes les bonnes réponses (ex. une seule lettre, ou plusieurs comme A et C). Une case en trop ou manquante = 0 point.</p>
         <div class="hero-actions quiz-submit-actions">
           <button type="submit" class="btn btn-primary">Valider et voir ma note</button>
-          {% if pdf_inline_url_name %}
-            <a class="btn btn-secondary" href="{% url detail_url_name category.slug document.year document.month document.pk %}#lecture-pdf" target="_blank" rel="noopener">Lire le PDF</a>
-          {% elif pdf_download_url_name %}
-            <a class="btn btn-secondary" href="{% url pdf_download_url_name category.slug document.year document.month document.pk %}">Télécharger le PDF</a>
+          {% if not is_exam_quiz %}
+            {% if pdf_inline_url_name %}
+              <a class="btn btn-secondary" href="{% url detail_url_name category.slug document.year document.month document.pk %}#lecture-pdf" target="_blank" rel="noopener">Lire le PDF</a>
+            {% elif pdf_download_url_name %}
+              <a class="btn btn-secondary" href="{% url pdf_download_url_name category.slug document.year document.month document.pk %}">Télécharger le PDF</a>
+            {% endif %}
           {% endif %}
           <a class="btn btn-ghost" href="{% url detail_url_name category.slug document.year document.month document.pk %}">Annuler</a>
         </div>
