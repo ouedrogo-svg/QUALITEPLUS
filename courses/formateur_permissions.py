@@ -51,14 +51,17 @@ def formateur_space_assigned_only(request) -> bool:
 def formateur_category_ids(user, *, assigned_only: bool = False) -> set[int] | None:
     """
     Identifiants des catégories accessibles.
-    None = toutes (personnel, espace complet uniquement).
+    None = toutes (personnel ou administrateur).
     set() = aucune catégorie assignée.
-    assigned_only=True : toujours le M2M du profil (espace contenu).
     """
     if not user.is_authenticated:
         return set()
-    if not assigned_only and formateur_has_unrestricted_categories(user):
+    
+    # Les administrateurs et le personnel ont accès à TOUTES les catégories par défaut,
+    # même si l'espace demande uniquement les catégories "assignées".
+    if formateur_has_unrestricted_categories(user):
         return None
+        
     profile = _profile(user)
     if not profile:
         return set()
@@ -71,6 +74,7 @@ def scope_formateur_categories(
     """Filtre un queryset lié à une catégorie selon le profil formateur."""
     ids = formateur_category_ids(user, assigned_only=assigned_only)
     if ids is None:
+        # Administrateur : pas de filtrage, accès total.
         return qs
     if not ids:
         return qs.none()
@@ -118,13 +122,16 @@ def get_formateur_object_or_404(
 def formateur_can_view_category_content(user, category: Category) -> bool:
     """
     Consultation du contenu public sans abonnement candidat,
-    uniquement pour les catégories assignées au formateur.
+    uniquement pour les catégories assignées au formateur ou pour les administrateurs.
     """
     if not user.is_authenticated:
         return False
     if not user_can_access_content_formateur_space(user):
         return False
     ids = formateur_category_ids(user, assigned_only=True)
+    if ids is None:
+        # Administrateur : accès à tout.
+        return True
     return bool(ids) and category.pk in ids
 
 

@@ -6,8 +6,11 @@
     </summary>
     <div class="admin-subscription-recap__body">
       <p class="admin-subscription-recap__actions">
-        <a class="button admin-subscription-recap__export" href="{{ admin_subscription_recap_export_url }}">
-          Exporter tout (Excel)
+        <a class="button admin-subscription-recap__export" href="{{ admin_subscription_recap_current_month_url }}">
+          Exporter ce mois (Excel)
+        </a>
+        <a class="button admin-subscription-recap__export-all" href="{{ admin_subscription_recap_export_url }}" style="background: #64748b; color: white; margin-left: 8px;">
+          Exporter tout l'historique
         </a>
       </p>
       {% if admin_subscription_recap %}

@@ -55,6 +55,7 @@ def _approved_requests_queryset(*, category_ids: set[int] | None = None):
             decided_at__isnull=False,
         )
         .select_related("user", "category", "plan")
+        .prefetch_related("plan__included_periods")
         .order_by("-decided_at")
     )
     if category_ids is not None:
@@ -65,9 +66,16 @@ def _approved_requests_queryset(*, category_ids: set[int] | None = None):
 
 
 def _row_from_request(req: SubscriptionRequest) -> dict:
-    sub_date = req.decided_at.date()
+    from django.utils import timezone
+    sub_date = timezone.localdate(req.decided_at)
     plan = req.plan
-    amount = plan.amount
+    if plan:
+        amount = plan.amount
+        option_label = _plan_option_label(plan)
+    else:
+        amount = Decimal("0")
+        option_label = "—"
+
     return {
         "date": sub_date,
         "date_display": sub_date.strftime("%d/%m/%Y"),
@@ -75,7 +83,7 @@ def _row_from_request(req: SubscriptionRequest) -> dict:
         "prenom": (req.user.first_name or "").strip() or "—",
         "categorie": req.category.name,
         "mois_abonnement": _content_month_label(req),
-        "option": _plan_option_label(plan),
+        "option": option_label,
         "montant": amount,
         "montant_display": _format_amount(amount),
     }
@@ -85,6 +93,8 @@ def subscription_recap_rows(
     *, for_month: tuple[int, int] | None = None, category_ids: set[int] | None = None
 ) -> list[dict]:
     rows = []
+    # On filtre en Python pour garantir une cohérence parfaite avec le récap affiché à l'écran.
+    # Le récap à l'écran (tree) utilise localdate() pour grouper, on doit faire pareil ici.
     for req in _approved_requests_queryset(category_ids=category_ids):
         row = _row_from_request(req)
         if for_month is not None:
@@ -92,6 +102,7 @@ def subscription_recap_rows(
             if row["date"].year != year or row["date"].month != month:
                 continue
         rows.append(row)
+
     rows.sort(key=lambda r: (r["date"], r["nom"].lower(), r["prenom"].lower()))
     return rows
 
@@ -110,10 +121,12 @@ def build_subscription_recap_tree(
     Récapitulatif par mois calendaire de validation (decided_at).
     ``month_export_url`` : callable ``(year, month) -> str`` pour le lien d’export du mois.
     """
+    from django.utils import timezone
     months_data: dict[tuple[int, int], list[dict]] = defaultdict(list)
 
     for req in _approved_requests_queryset(category_ids=category_ids):
         row = _row_from_request(req)
+        # On utilise le même localdate que dans _row_from_request pour la cohérence
         month_key = (row["date"].year, row["date"].month)
         months_data[month_key].append(row)
 
@@ -223,10 +236,15 @@ def subscription_recap_spreadsheet_rows(
 def subscription_recap_filename(
     *, for_month: tuple[int, int] | None = None, ext: str = "xlsx"
 ) -> str:
+    from django.utils import timezone
+
     if for_month is not None:
         year, month = for_month
         return f"abonnements_{year:04d}-{month:02d}.{ext}"
-    return f"abonnements_recap.{ext}"
+
+    # Pour l'export global, on ajoute la date du jour
+    today = timezone.localdate()
+    return f"abonnements_global_{today.strftime('%Y-%m-%d')}.{ext}"
 
 
 def _recap_title(*, for_month: tuple[int, int] | None = None) -> str:
@@ -274,12 +292,13 @@ def build_subscription_recap_xlsx(
     total = Decimal("0")
     for row_data in rows:
         ws.append(list(row_data))
+        # row_data[-1] est le montant (float)
         total += Decimal(str(row_data[-1]))
 
     data_last_row = ws.max_row
     if rows:
         total_row = data_last_row + 2
-        ws.cell(row=total_row, column=n_cols - 1, value="Total")
+        ws.cell(row=total_row, column=n_cols - 1, value="TOTAL GÉNÉRAL")
         ws.cell(row=total_row, column=n_cols - 1).font = Font(bold=True)
         ws.cell(row=total_row, column=n_cols - 1).alignment = Alignment(
             horizontal="right"
@@ -287,6 +306,7 @@ def build_subscription_recap_xlsx(
         total_cell = ws.cell(row=total_row, column=n_cols, value=float(total))
         total_cell.font = Font(bold=True)
         total_cell.number_format = "#,##0"
+        total_cell.fill = PatternFill("solid", fgColor="F1F5F9")
         total_cell.alignment = Alignment(horizontal="right")
 
     ws.column_dimensions["A"].width = 14

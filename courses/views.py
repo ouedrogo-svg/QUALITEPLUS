@@ -121,6 +121,12 @@ def _user_has_content_access(user, category: Category, year: int, month: int) ->
     return formateur_can_view_category_content(user, category)
 
 
+def _user_has_formateur_category_access(user, category: Category) -> bool:
+    from .formateur_permissions import formateur_can_view_category_content
+
+    return formateur_can_view_category_content(user, category)
+
+
 def _subscription_gate(request, next_path: str, category: Category, year: int, month: int):
     """Redirige vers connexion ou abonnement si le candidat n’a pas accès à ce mois dans cette catégorie."""
     if not request.user.is_authenticated:
@@ -221,12 +227,25 @@ def _home_categories_queryset(user):
     return qs.order_by("name")
 
 
+from django.core.cache import cache
+
 def home(request):
     featured = Course.objects.filter(published=True).select_related("instructor", "category")[:6]
-    categories = list(_home_categories_queryset(request.user))
-    plans = SubscriptionPlan.objects.filter(is_active=True).prefetch_related(
-        "included_periods"
-    )
+    
+    # Cache des catégories et des plans pour éviter les annotations COUNT lourdes sur chaque visite.
+    cache_key_categories = f"home_categories_{request.user.id if request.user.is_authenticated else 'anon'}"
+    categories = cache.get(cache_key_categories)
+    if categories is None:
+        categories = list(_home_categories_queryset(request.user))
+        cache.set(cache_key_categories, categories, 300)  # 5 minutes
+
+    plans = cache.get("home_subscription_plans")
+    if plans is None:
+        plans = list(SubscriptionPlan.objects.filter(is_active=True).prefetch_related(
+            "included_periods"
+        ))
+        cache.set("home_subscription_plans", plans, 600)  # 10 minutes
+
     is_formateur_home = False
     if request.user.is_authenticated:
         from .formateur_permissions import user_can_access_content_formateur_space
@@ -246,6 +265,9 @@ def home(request):
 
 def category_months(request, slug):
     category = get_object_or_404(Category, slug=slug)
+    is_formateur_category_access = _user_has_formateur_category_access(
+        request.user, category
+    )
     if request.user.is_authenticated:
         from .formateur_permissions import (
             ensure_formateur_category_access,
@@ -271,6 +293,8 @@ def category_months(request, slug):
         {
             "category": category,
             "periods": periods,
+            "is_formateur_category_access": is_formateur_category_access,
+            "has_active_subscription": user_has_active_subscription(request.user),
         },
     )
 
@@ -345,7 +369,7 @@ def exam_detail(request, category_slug, year, month, pk):
         return gate
     quiz = fetch_exam_quiz(exam)
     n_questions = quiz.n_questions if quiz else 0
-    if quiz and n_questions == 0:
+    if n_questions == 0:
         n_questions = try_rebuild_quiz_for_exam(exam)
         if n_questions > 0:
             quiz = fetch_exam_quiz(exam)
@@ -495,7 +519,7 @@ def correction_detail(request, category_slug, year, month, pk):
         return gate
     quiz = fetch_correction_quiz(correction)
     n_questions = quiz.n_questions if quiz else 0
-    if quiz and n_questions == 0:
+    if n_questions == 0:
         n_questions = try_rebuild_quiz_for_correction(correction)
         if n_questions > 0:
             quiz = fetch_correction_quiz(correction)
@@ -900,7 +924,15 @@ def my_learning(request):
 
 @login_required
 def my_teaching(request):
-    courses = Course.objects.filter(instructor=request.user).order_by("-updated_at")
+    """
+    Espace d'enseignement : liste les cours dont l'utilisateur est le formateur.
+    Les administrateurs voient TOUS les cours de la plateforme.
+    """
+    if getattr(request.user, "is_staff", False):
+        courses = Course.objects.all().select_related("instructor", "category").order_by("-updated_at")
+    else:
+        courses = Course.objects.filter(instructor=request.user).select_related("category").order_by("-updated_at")
+        
     return render(request, "courses/my_teaching.html", {"courses": courses})
 
 
@@ -921,7 +953,11 @@ def course_create(request):
 
 @login_required
 def course_edit(request, slug):
-    course = get_object_or_404(Course, slug=slug, instructor=request.user)
+    if getattr(request.user, "is_staff", False):
+        course = get_object_or_404(Course, slug=slug)
+    else:
+        course = get_object_or_404(Course, slug=slug, instructor=request.user)
+        
     if request.method == "POST":
         form = CourseForm(request.POST, request.FILES, instance=course)
         if form.is_valid():
@@ -940,7 +976,11 @@ def course_edit(request, slug):
 
 @login_required
 def lesson_create(request, course_slug):
-    course = get_object_or_404(Course, slug=course_slug, instructor=request.user)
+    if getattr(request.user, "is_staff", False):
+        course = get_object_or_404(Course, slug=course_slug)
+    else:
+        course = get_object_or_404(Course, slug=course_slug, instructor=request.user)
+        
     if request.method == "POST":
         form = LessonForm(request.POST)
         if form.is_valid():
@@ -960,7 +1000,11 @@ def lesson_create(request, course_slug):
 
 @login_required
 def lesson_edit(request, course_slug, pk):
-    course = get_object_or_404(Course, slug=course_slug, instructor=request.user)
+    if getattr(request.user, "is_staff", False):
+        course = get_object_or_404(Course, slug=course_slug)
+    else:
+        course = get_object_or_404(Course, slug=course_slug, instructor=request.user)
+        
     lesson = get_object_or_404(Lesson, pk=pk, course=course)
     if request.method == "POST":
         form = LessonForm(request.POST, instance=lesson)

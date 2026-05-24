@@ -800,18 +800,31 @@ def formateur_subscription_reject(request, pk):
 
 @content_formateur_required
 def formateur_recap_subscriptions(request):
+    from .subscription_recap import (
+        formateur_subscription_recap_month_export_url,
+        formateur_contenu_subscription_recap_month_export_url,
+    )
+    now = timezone.localdate()
     if getattr(request, "formateur_url_group", "full") == "contenu":
         tree = build_formateur_contenu_subscription_recap_tree(request.user)
         global_export_url = formateur_contenu_subscription_recap_global_export_url()
+        current_month_url = formateur_contenu_subscription_recap_month_export_url(
+            now.year, now.month
+        )
     else:
         tree = build_formateur_subscription_recap_tree(request.user)
         global_export_url = formateur_subscription_recap_global_export_url()
+        current_month_url = formateur_subscription_recap_month_export_url(
+            now.year, now.month
+        )
+
     return render(
         request,
         "courses/formateur/recap_subscriptions.html",
         {
             "subscription_recap": tree,
             "global_export_url": global_export_url,
+            "current_month_url": current_month_url,
         },
     )
 
@@ -830,6 +843,8 @@ def formateur_recap_export_all(request):
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     response["Content-Disposition"] = f'attachment; filename="{subscription_recap_filename()}"'
+    response["Content-Length"] = len(content)
+    response["Cache-Control"] = "no-store"
     return response
 
 
@@ -857,4 +872,6 @@ def formateur_recap_export_month(request, month_str):
     response["Content-Disposition"] = (
         f'attachment; filename="{subscription_recap_filename(for_month=for_month)}"'
     )
+    response["Content-Length"] = len(content)
+    response["Cache-Control"] = "no-store"
     return response

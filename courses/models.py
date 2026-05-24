@@ -81,6 +81,9 @@ class MonthlyCourseContent(models.Model):
         verbose_name = "contenu mensuel (PDF)"
         verbose_name_plural = "contenus mensuels (PDF)"
         ordering = ["-year", "-month", "category__name", "id"]
+        indexes = [
+            models.Index(fields=["category", "-year", "-month"]),
+        ]
 
     def __str__(self):
         period = f"{french_month_name(self.month)} {self.year}"
@@ -149,6 +152,9 @@ class MonthlyCorrection(models.Model):
         verbose_name = "correction mensuelle (PDF)"
         verbose_name_plural = "corrections mensuelles (PDF)"
         ordering = ["-year", "-month", "category__name", "id"]
+        indexes = [
+            models.Index(fields=["category", "-year", "-month"]),
+        ]
 
     def __str__(self):
         period = f"{french_month_name(self.month)} {self.year}"
@@ -223,6 +229,9 @@ class MonthlyExam(models.Model):
         verbose_name = "examen mensuel (PDF)"
         verbose_name_plural = "examens mensuels (PDF)"
         ordering = ["-year", "-month", "category__name", "id"]
+        indexes = [
+            models.Index(fields=["category", "-year", "-month"]),
+        ]
 
     def __str__(self):
         period = f"{french_month_name(self.month)} {self.year}"
@@ -1048,13 +1057,23 @@ def user_has_active_subscription(user) -> bool:
 def get_user_subscribed_months(user) -> list[dict]:
     if not user.is_authenticated:
         return []
+    
+    # Priorité absolue au cache de prefetch du middleware pour éviter toute requête.
     if hasattr(user, "_prefetched_objects_cache") and "month_subscriptions" in user._prefetched_objects_cache:
         qs = user.month_subscriptions.all()
     else:
+        # Fallback avec un cache court pour éviter les répétitions si le middleware n'a pas pu précharger.
+        from django.core.cache import cache
+        cache_key = f"user_subscribed_months_{user.id}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            return cached_data
+            
         qs = UserSubscription.objects.filter(user=user).select_related("category").order_by(
             "-year", "-month", "category__name"
         )
-    return [
+        
+    data = [
         {
             "category": sub.category,
             "year": sub.year,
@@ -1065,6 +1084,13 @@ def get_user_subscribed_months(user) -> list[dict]:
         }
         for sub in qs
     ]
+    
+    # On met en cache si ce n'était pas préchargé
+    if not (hasattr(user, "_prefetched_objects_cache") and "month_subscriptions" in user._prefetched_objects_cache):
+        from django.core.cache import cache
+        cache.set(f"user_subscribed_months_{user.id}", data, 60)
+        
+    return data
 
 
 def extend_subscription_after_approval(

@@ -197,8 +197,8 @@ def build_exam_results_xlsx(exam: MonthlyExam) -> bytes:
     ws["A1"].font = Font(bold=True, size=12)
     ws.append([])
 
-    header_row = len(ws["A"])
     ws.append(list(RESULT_COLUMNS))
+    header_row = ws.max_row
     for col in range(1, len(RESULT_COLUMNS) + 1):
         cell = ws.cell(row=header_row, column=col)
         cell.font = Font(bold=True)

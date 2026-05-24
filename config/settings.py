@@ -12,9 +12,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY')
 
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
 
 INSTALLED_APPS = [
@@ -51,7 +51,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "courses.context_processors.subscription",
                 "courses.context_processors.admin_exam_recap",
                 "courses.context_processors.formateur_nav",
                 "courses.context_processors.formateur_space",
@@ -79,7 +78,8 @@ DATABASES = {
 # Connexion persistante (surtout si PostgreSQL distant) : moins de latence par page.
 _db = DATABASES["default"]
 if "postgresql" in _db.get("ENGINE", ""):
-    _db.setdefault("CONN_MAX_AGE", 60)
+    # 600 secondes (10 minutes) pour minimiser l'impact de la latence réseau (handshake TCP/SSL).
+    _db.setdefault("CONN_MAX_AGE", 600)
 
 CACHES = {
     "default": {

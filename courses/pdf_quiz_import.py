@@ -438,8 +438,8 @@ def _try_rebuild_quiz_for_document(
         .first()
     )
     if not quiz:
-        quiz_model.objects.get_or_create(**{parent_fk_name: document}, defaults={})
-        return 0
+        quiz, _ = quiz_model.objects.get_or_create(**{parent_fk_name: document}, defaults={})
+        quiz.n_questions = 0
     n = quiz.n_questions
     if n > 0 or not document.pdf:
         return n

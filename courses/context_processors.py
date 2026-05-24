@@ -111,7 +111,9 @@ def admin_exam_recap(request):
         from .subscription_recap import (
             build_admin_subscription_recap_tree,
             subscription_recap_global_export_url,
+            subscription_recap_month_export_url,
         )
+        from django.utils import timezone
 
         subscription_recap = cache.get(_ADMIN_SUBSCRIPTION_RECAP_CACHE_KEY)
         if subscription_recap is None:
@@ -123,10 +125,15 @@ def admin_exam_recap(request):
                 subscription_recap,
                 _ADMIN_RECAP_CACHE_SECONDS,
             )
+        
+        now = timezone.localdate()
         ctx["show_admin_subscription_recap"] = True
         ctx["admin_subscription_recap"] = subscription_recap
         ctx["admin_subscription_recap_export_url"] = (
             subscription_recap_global_export_url()
+        )
+        ctx["admin_subscription_recap_current_month_url"] = (
+            subscription_recap_month_export_url(now.year, now.month)
         )
 
     return ctx

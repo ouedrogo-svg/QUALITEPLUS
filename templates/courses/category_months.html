@@ -9,13 +9,15 @@
   </div>
   <h1>{{ category.name }}</h1>
   <p class="lead">Choisissez un mois pour le contenu. L’abonnement <strong>mensuel</strong> couvre le mois choisi ; l’<strong>annuel</strong> ou une <strong>tranche</strong> couvre les mois définis par l’administrateur.</p>
-  {% if user.is_authenticated %}
+  {% if user.is_authenticated and not is_formateur_category_access %}
     <p><a class="btn btn-secondary btn-sm" href="{% url 'courses:subscribe' %}?category={{ category.slug }}">S’abonner à cette catégorie (annuel / tranche)</a></p>
   {% endif %}
 </div>
 <div class="container">
   {% if not user.is_authenticated %}
     <p class="alert alert-info">Connectez-vous pour ouvrir un mois. Un abonnement validé pour ce mois est requis.</p>
+  {% elif is_formateur_category_access %}
+    <p class="alert alert-success">Accès formateur actif : vous pouvez consulter le contenu de cette catégorie sans abonnement.</p>
   {% elif not has_active_subscription %}
     <p class="alert alert-warning">Cliquez sur <strong>S’abonner</strong> sur le mois souhaité pour choisir votre formule.</p>
   {% endif %}

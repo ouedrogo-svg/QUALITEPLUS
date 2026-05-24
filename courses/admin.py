@@ -59,6 +59,7 @@ class MonthlyCourseContentAdmin(admin.ModelAdmin):
 
     list_display = ("category", "year", "month_display", "title", "has_pdf", "created_at")
     list_filter = ("category", "year", "month")
+    list_select_related = ("category",)
     search_fields = ("title", "category__name")
     readonly_fields = ("created_at",)
     fieldsets = (
@@ -127,6 +128,7 @@ class CorrectionQuizInline(admin.StackedInline):
 class MonthlyCorrectionAdmin(admin.ModelAdmin):
     list_display = ("category", "year", "month_display", "title", "has_pdf", "created_at")
     list_filter = ("category", "year", "month")
+    list_select_related = ("category",)
     search_fields = ("title", "category__name")
     readonly_fields = ("created_at",)
     actions = ("rebuild_quiz_from_pdf",)
@@ -240,13 +242,26 @@ class ExamQuizInline(admin.StackedInline):
     )
 
 
+from django.db.models import Count, Q
+
+
 @admin.register(MonthlyExam)
 class MonthlyExamAdmin(admin.ModelAdmin):
-    list_display = ("category", "year", "month_display", "title", "has_pdf", "n_results", "created_at")
+    list_display = ("category", "year", "month_display", "title", "has_pdf", "n_results_annotated", "created_at")
     list_filter = ("category", "year", "month")
+    list_select_related = ("category",)
     search_fields = ("title", "category__name")
     readonly_fields = ("created_at", "recap_resultats")
     actions = ("rebuild_quiz_from_pdf", "export_results_excel")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            candidate_count=Count("quiz_attempts", filter=Q(quiz_attempts__sent_to_admin=True), distinct=True)
+        )
+
+    @admin.display(description="résultats", ordering="candidate_count")
+    def n_results_annotated(self, obj):
+        return getattr(obj, "candidate_count", 0)
     fieldsets = (
         (
             None,
@@ -310,12 +325,6 @@ class MonthlyExamAdmin(admin.ModelAdmin):
     @admin.display(description="PDF", boolean=True)
     def has_pdf(self, obj):
         return bool(obj.pdf)
-
-    @admin.display(description="résultats")
-    def n_results(self, obj):
-        if not obj.pk:
-            return "—"
-        return len(ranked_exam_results(obj))
 
     @admin.display(description="Classement des candidats")
     def recap_resultats(self, obj):
@@ -467,6 +476,7 @@ class ExamQuizAttemptAdmin(admin.ModelAdmin):
         "submitted_at",
     )
     list_filter = ("sent_to_admin", "exam__category", "exam__year", "exam__month", "exam")
+    list_select_related = ("user", "exam")
     search_fields = ("user__last_name", "user__first_name", "user__username")
     readonly_fields = (
         "user",
@@ -627,6 +637,7 @@ class SubscriptionRequestAdmin(admin.ModelAdmin):
         "decided_by",
     )
     list_filter = ("status", "plan", "category", "year", "month")
+    list_select_related = ("user", "plan", "decided_by")
     search_fields = (
         "user__username",
         "user__email",
@@ -742,6 +753,8 @@ class SubscriptionRequestAdmin(admin.ModelAdmin):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = len(content)
+        response["Cache-Control"] = "no-store"
         return response
 
     def export_recap_month_excel_view(self, request, month_str):
@@ -759,6 +772,8 @@ class SubscriptionRequestAdmin(admin.ModelAdmin):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = len(content)
+        response["Cache-Control"] = "no-store"
         return response
 
     @admin.display(description="accès", ordering="year")
@@ -779,10 +794,22 @@ class SubscriptionRequestAdmin(admin.ModelAdmin):
                 .values_list("status", flat=True)
                 .first()
             )
-        super().save_model(request, obj, form, change)
+        
+        # Si approbation manuelle via le formulaire (pas via action)
         if (
             obj.status == SubscriptionRequest.Status.APPROVED
-            and old_status == SubscriptionRequest.Status.PENDING
+            and (not change or old_status == SubscriptionRequest.Status.PENDING)
+        ):
+            if not obj.decided_at:
+                obj.decided_at = timezone.now()
+            if not obj.decided_by:
+                obj.decided_by = request.user
+
+        super().save_model(request, obj, form, change)
+        
+        if (
+            obj.status == SubscriptionRequest.Status.APPROVED
+            and (not change or old_status == SubscriptionRequest.Status.PENDING)
         ):
             n_months = extend_subscription_after_approval_from_request(obj)
             self.message_user(
@@ -826,6 +853,7 @@ class SubscriptionRequestAdmin(admin.ModelAdmin):
 class UserSubscriptionAdmin(admin.ModelAdmin):
     list_display = ("user", "content_month", "plan", "granted_at")
     list_filter = ("category", "year", "month", "plan")
+    list_select_related = ("user", "category", "plan")
     search_fields = ("user__username",)
     fields = ("user", "category", "year", "month", "plan", "granted_at")
     readonly_fields = ("granted_at",)
@@ -844,6 +872,7 @@ class LessonInline(admin.TabularInline):
 class CourseAdmin(admin.ModelAdmin):
     list_display = ("title", "instructor", "category", "published", "created_at")
     list_filter = ("published", "category")
+    list_select_related = ("instructor", "category")
     search_fields = ("title", "short_description")
     inlines = [LessonInline]
 
@@ -852,8 +881,10 @@ class CourseAdmin(admin.ModelAdmin):
 class EnrollmentAdmin(admin.ModelAdmin):
     list_display = ("user", "course", "enrolled_at")
     list_filter = ("enrolled_at",)
+    list_select_related = ("user", "course")
 
 
 @admin.register(LessonProgress)
 class LessonProgressAdmin(admin.ModelAdmin):
     list_display = ("user", "lesson", "completed_at")
+    list_select_related = ("user", "lesson")
