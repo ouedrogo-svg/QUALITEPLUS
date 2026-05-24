@@ -16,9 +16,8 @@
     <li>Collecte des résultats : <strong>{{ exam.results_collection_days }} jour{{ exam.results_collection_days|pluralize }}</strong> après la création de l’épreuve</li>
   </ul>
   <p class="hero-actions">
-    <a class="btn btn-secondary" href="{% url 'courses:exam_pdf_download' category.slug exam.year exam.month exam.pk %}">Télécharger l’examen (PDF)</a>
     {% if n_quiz_questions %}
-      <a class="btn btn-primary" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">Quiz interactif ({{ n_quiz_questions }} question{{ n_quiz_questions|pluralize }})</a>
+      <a class="btn btn-primary" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">Lancer le quiz interactif ({{ n_quiz_questions }} question{{ n_quiz_questions|pluralize }})</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'courses:category_month_detail' category.slug exam.year exam.month %}">Retour au mois</a>
   </p>

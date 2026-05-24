@@ -387,19 +387,8 @@ def exam_detail(request, category_slug, year, month, pk):
 
 @login_required
 def exam_pdf_download(request, category_slug, year, month, pk):
-    category, exam = _get_monthly_exam(request, category_slug, year, month, pk)
-    if not _user_has_content_access(request.user, category, year, month):
-        messages.error(
-            request,
-            f"Abonnement pour {category.name} — {content_month_period_label(year, month)} requis pour télécharger cet examen.",
-        )
-        return redirect(
-            _subscribe_url_for_period(category, year, month, request.get_full_path())
-        )
-    if not exam.pdf:
-        raise Http404()
-    filename = os.path.basename(exam.pdf.name)
-    return FileResponse(exam.pdf.open("rb"), as_attachment=True, filename=filename)
+    """Accès PDF désactivé pour les examens : seul le quiz est autorisé."""
+    raise Http404("Le téléchargement du PDF pour les examens est désactivé.")
 
 
 @login_required
