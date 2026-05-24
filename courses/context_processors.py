@@ -43,24 +43,31 @@ def formateur_nav(request):
             "show_formateur_space": False,
             "show_formateur_contenu_space": False,
         }
-    if getattr(user, "is_staff", False):
+    
+    # Super-utilisateur : voit tout
+    if getattr(user, "is_superuser", False):
         return {
             "show_formateur_space": True,
             "show_formateur_contenu_space": True,
         }
+        
     profile = getattr(user, "profile", None)
     if profile is None:
         try:
             profile = user.profile
         except ObjectDoesNotExist:
             profile = None
+            
     if profile is None:
+        # Staff non super-user sans profil : accès admin Django possible mais pas d'espace formateur dédié
         return {
             "show_formateur_space": False,
             "show_formateur_contenu_space": False,
         }
+        
     full = bool(profile.is_platform_formateur)
     contenu = bool(profile.is_content_formateur)
+    
     return {
         "show_formateur_space": full,
         "show_formateur_contenu_space": contenu and not full,

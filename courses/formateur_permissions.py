@@ -13,10 +13,13 @@ def _profile(user):
 
 
 def user_can_access_full_formateur_space(user) -> bool:
-    """Espace formateur complet (contenu + demandes d’abonnement + récap)."""
+    """
+    Espace formateur complet (contenu + demandes d’abonnement + récap).
+    Réservé aux super-utilisateurs ou aux formateurs plateforme.
+    """
     if not user.is_authenticated:
         return False
-    if getattr(user, "is_staff", False):
+    if getattr(user, "is_superuser", False):
         return True
     profile = _profile(user)
     return bool(profile and profile.is_platform_formateur)
