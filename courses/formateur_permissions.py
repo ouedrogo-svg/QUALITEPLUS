@@ -38,8 +38,12 @@ def user_can_access_formateur_space(user) -> bool:
 
 
 def formateur_has_unrestricted_categories(user) -> bool:
-    """Personnel : toutes les catégories, sans filtre M2M."""
-    return bool(user.is_authenticated and getattr(user, "is_staff", False))
+    """
+    Seuls les super-utilisateurs ont un accès total et illimité à toutes les catégories.
+    Les autres membres du personnel (is_staff) sont traités comme des formateurs
+    et restreints à leurs catégories assignées dans les espaces dédiés.
+    """
+    return bool(user.is_authenticated and getattr(user, "is_superuser", False))
 
 
 def formateur_space_assigned_only(request) -> bool:

@@ -923,9 +923,10 @@ def my_learning(request):
 def my_teaching(request):
     """
     Espace d'enseignement : liste les cours dont l'utilisateur est le formateur.
-    Les administrateurs voient TOUS les cours de la plateforme.
+    Seul le super-administrateur voit TOUS les cours de la plateforme.
+    Les autres membres (staff ou formateurs) ne voient que leurs propres cours.
     """
-    if getattr(request.user, "is_staff", False):
+    if getattr(request.user, "is_superuser", False):
         courses = Course.objects.all().select_related("instructor", "category").order_by("-updated_at")
     else:
         courses = Course.objects.filter(instructor=request.user).select_related("category").order_by("-updated_at")
@@ -936,7 +937,7 @@ def my_teaching(request):
 @login_required
 def course_create(request):
     if request.method == "POST":
-        form = CourseForm(request.POST, request.FILES)
+        form = CourseForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             c = form.save(commit=False)
             c.instructor = request.user
@@ -944,25 +945,25 @@ def course_create(request):
             messages.success(request, "SUJET créé. Ajoutez des leçons depuis la fiche SUJET.")
             return redirect("courses:course_edit", slug=c.slug)
     else:
-        form = CourseForm()
+        form = CourseForm(user=request.user)
     return render(request, "courses/course_form.html", {"form": form, "title": "Nouveau SUJET"})
 
 
 @login_required
 def course_edit(request, slug):
-    if getattr(request.user, "is_staff", False):
+    if getattr(request.user, "is_superuser", False):
         course = get_object_or_404(Course, slug=slug)
     else:
         course = get_object_or_404(Course, slug=slug, instructor=request.user)
         
     if request.method == "POST":
-        form = CourseForm(request.POST, request.FILES, instance=course)
+        form = CourseForm(request.POST, request.FILES, instance=course, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, "SUJET mis à jour.")
             return redirect("courses:course_edit", slug=course.slug)
     else:
-        form = CourseForm(instance=course)
+        form = CourseForm(instance=course, user=request.user)
     lessons = course.lessons.all()
     return render(
         request,
@@ -973,7 +974,7 @@ def course_edit(request, slug):
 
 @login_required
 def lesson_create(request, course_slug):
-    if getattr(request.user, "is_staff", False):
+    if getattr(request.user, "is_superuser", False):
         course = get_object_or_404(Course, slug=course_slug)
     else:
         course = get_object_or_404(Course, slug=course_slug, instructor=request.user)
@@ -997,7 +998,7 @@ def lesson_create(request, course_slug):
 
 @login_required
 def lesson_edit(request, course_slug, pk):
-    if getattr(request.user, "is_staff", False):
+    if getattr(request.user, "is_superuser", False):
         course = get_object_or_404(Course, slug=course_slug)
     else:
         course = get_object_or_404(Course, slug=course_slug, instructor=request.user)

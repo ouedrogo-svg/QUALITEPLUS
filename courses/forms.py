@@ -38,6 +38,15 @@ class CourseForm(forms.ModelForm):
             "published": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if user:
+            from .formateur_permissions import formateur_category_queryset
+
+            self.fields["category"].queryset = formateur_category_queryset(
+                user, assigned_only=True
+            )
+
 
 class LessonForm(forms.ModelForm):
     class Meta:
