@@ -120,8 +120,8 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# WhiteNoise configuration for production
-# On utilise la version compressée qui est plus performante
+# Storage configuration
+# On utilise FileSystemStorage mais on s'assure que les dossiers existent
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -131,7 +131,9 @@ STORAGES = {
     },
 }
 
-WHITENOISE_MANIFEST_STRICT = False  # Évite les erreurs si un fichier manque
+# Correction pour Render : s'assurer que MEDIA_ROOT est bien accessible
+if not os.path.exists(MEDIA_ROOT):
+    os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"

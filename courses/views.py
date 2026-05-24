@@ -545,8 +545,13 @@ def correction_pdf_inline(request, category_slug, year, month, pk):
     if not correction.pdf:
         raise Http404()
     filename = os.path.basename(correction.pdf.name)
+    try:
+        content_file = correction.pdf.open("rb")
+    except (FileNotFoundError, ValueError):
+        raise Http404("Le fichier PDF est introuvable sur le serveur.")
+        
     response = FileResponse(
-        correction.pdf.open("rb"), as_attachment=False, filename=filename
+        content_file, as_attachment=False, filename=filename
     )
     response["Content-Disposition"] = f'inline; filename="{filename}"'
     return response
@@ -566,7 +571,11 @@ def correction_pdf_download(request, category_slug, year, month, pk):
     if not correction.pdf:
         raise Http404()
     filename = os.path.basename(correction.pdf.name)
-    return FileResponse(correction.pdf.open("rb"), as_attachment=True, filename=filename)
+    try:
+        content_file = correction.pdf.open("rb")
+    except (FileNotFoundError, ValueError):
+        raise Http404("Le fichier PDF est introuvable sur le serveur.")
+    return FileResponse(content_file, as_attachment=True, filename=filename)
 
 
 @login_required
