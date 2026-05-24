@@ -17,3 +17,4 @@ pypdfium2==5.8.0
 python-decouple==3.8
 sqlparse==0.5.5
 tzdata==2026.2
+whitenoise==6.9.0
