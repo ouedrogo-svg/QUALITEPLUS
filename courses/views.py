@@ -485,7 +485,6 @@ def exam_quiz(request, category_slug, year, month, pk):
             "list_url_name": "courses:category_exams",
             "detail_url_name": "courses:exam_detail",
             "quiz_url_name": "courses:exam_quiz",
-            "pdf_download_url_name": "courses:exam_pdf_download",
         },
     )
 
