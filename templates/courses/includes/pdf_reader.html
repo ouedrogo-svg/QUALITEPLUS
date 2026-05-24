@@ -2,11 +2,13 @@
 <section class="pdf-reader-section" aria-label="Lecture du document">
   <p class="text-muted pdf-reader-hint">Lecture en ligne — consultation seule (sans modification du fichier).</p>
   <div class="pdf-frame-wrap">
-    <iframe
-      class="pdf-frame"
-      title="{{ pdf_title|default:'Document PDF' }}"
-      src="{{ pdf_inline_url }}"
-    ></iframe>
+    <iframe src="{{ pdf_inline_url }}#toolbar=0" class="pdf-frame" title="{{ pdf_title }}">
+      <p>Votre navigateur ne supporte pas la lecture directe du PDF. 
+         <a href="{{ pdf_inline_url }}" target="_blank">Cliquez ici pour l'ouvrir</a>.</p>
+    </iframe>
   </div>
+  <p class="pdf-fallback-hint" style="margin-top: 10px; font-size: 0.9em; color: #64748b; text-align: center;">
+    Note : Si le document ne s'affiche pas, vous pouvez utiliser le bouton <strong>Télécharger</strong> ci-dessus.
+  </p>
 </section>
 {% endif %}

@@ -3,8 +3,15 @@ Configuration Django — plateforme de SUJET en ligne.
 Force redeploy: 2026-05-24-v2
 """
 import socket
+import mimetypes
 from decouple import config
 import os
+
+mimetypes.add_type("text/css", ".css", True)
+mimetypes.add_type("application/pdf", ".pdf", True)
+
+# Security: Allow iframes from same origin for PDF reader
+X_FRAME_OPTIONS = "SAMEORIGIN"
 import dj_database_url
 from pathlib import Path
 
@@ -114,15 +121,17 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # WhiteNoise configuration for production
-# CompressedStaticFilesStorage is more robust than Manifest version for initial deployment
+# On utilise la version compressée qui est plus performante
 STORAGES = {
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+
+WHITENOISE_MANIFEST_STRICT = False  # Évite les erreurs si un fichier manque
 
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
