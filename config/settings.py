@@ -1,5 +1,6 @@
 """
 Configuration Django — plateforme de SUJET en ligne.
+Force redeploy: 2026-05-24-v2
 """
 import socket
 from decouple import config
@@ -18,6 +19,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='*').split(',')
 
 
 INSTALLED_APPS = [
+    "whitenoise.runserver_nostatic",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
