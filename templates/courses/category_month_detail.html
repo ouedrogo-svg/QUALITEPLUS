@@ -63,9 +63,13 @@
           <a class="btn btn-secondary" href="{{ exam.get_absolute_url }}">
             {% if exam.title %}{{ exam.title }}{% else %}Examen #{{ exam.pk }}{% endif %}
           </a>
-          {% if exam.n_quiz_questions %}
-            <a class="btn btn-primary btn-sm" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">Passer le Quiz ({{ exam.n_quiz_questions }} q.)</a>
-          {% endif %}
+          <a class="btn btn-primary btn-sm" href="{% url 'courses:exam_quiz' category.slug exam.year exam.month exam.pk %}">
+            {% if exam.n_quiz_questions %}
+              Passer le Quiz ({{ exam.n_quiz_questions }} q.)
+            {% else %}
+              Passer le Quiz
+            {% endif %}
+          </a>
         </li>
       {% endfor %}
     </ul>
