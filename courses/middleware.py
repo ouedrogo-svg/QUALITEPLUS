@@ -24,8 +24,11 @@ class PrefetchUserSubscriptionMiddleware:
             else:
                 from .models import UserSubscription
                 
-                # On récupère l'utilisateur avec son profil et ses abonnements en UNE SEULE requête complexe.
-                user_qs = user.__class__.objects.filter(pk=user.pk).select_related('profile').prefetch_related(
+                # On récupère l'utilisateur avec son profil, sa catégorie choisie et ses abonnements.
+                user_qs = user.__class__.objects.filter(pk=user.pk).select_related(
+                    'profile', 
+                    'profile__candidate_category'
+                ).prefetch_related(
                     Prefetch(
                         'month_subscriptions',
                         queryset=UserSubscription.objects.select_related('category', 'plan').order_by('-year', '-month', 'category__name')
