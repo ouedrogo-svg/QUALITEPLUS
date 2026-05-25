@@ -8,11 +8,11 @@
       <h1>FORMATION CONCOURS PROFESSIONNEL 2027 </h1>
       <p class="lead">Choisissez une catégorie, puis un mois : SUJETS PDF, corrections et examens avec quiz interactif. L’abonnement est valable pour la catégorie et le mois choisis uniquement.</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#categories-par-mois">Voir les catégories</a>
         {% if user.is_authenticated %}
-          <a class="btn btn-secondary" href="#categories-par-mois">Voir les catégories</a>
+          <a class="btn btn-primary" href="#categories-par-mois">Voir les catégories</a>
         {% else %}
-          <a class="btn btn-secondary" href="{% url 'accounts:signup' %}">Créer un compte</a>
+          <a class="btn btn-primary" href="{% url 'accounts:signup' %}">Créer un compte</a>
+          <a class="btn btn-secondary" href="{% url 'accounts:login' %}">Se connecter</a>
         {% endif %}
       </div>
     </div>
@@ -38,11 +38,12 @@
   </div>
 </section>
 
+{% if user.is_authenticated %}
 <section class="section" id="categories-par-mois">
   <div class="container">
     <h2 class="section-title">{% if is_formateur_home %}Votre catégorie{% else %}Contenus par catégorie et par mois{% endif %}</h2>
     {% if is_formateur_home %}
-      <p class="lead">Seule la catégorie qui vous est assignée par l’administrateur est affichée ici. Gérez le contenu depuis
+      <p class="lead">Seule la catégorie qui vous est assignée par l'administrateur est affichée ici. Gérez le contenu depuis
         {% if show_formateur_space %}
           <a href="{% url 'courses:formateur_dashboard' %}">votre espace formateur</a>.
         {% else %}
@@ -69,9 +70,9 @@
       {% empty %}
         <p class="empty-state">
           {% if is_formateur_home %}
-            Aucune catégorie ne vous a été assignée. Contactez l’administrateur.
+            Aucune catégorie ne vous a été assignée. Contactez l'administrateur.
           {% else %}
-            Aucune catégorie. Créez-en dans l’administration Django.
+            Aucune catégorie. Créez-en dans l'administration Django.
           {% endif %}
         </p>
       {% endfor %}
@@ -104,4 +105,16 @@
     <p class="catalog-link"><a href="{% url 'courses:course_list' %}">Tout le catalogue classique</a></p>
   </div>
 </section>
+{% else %}
+<section class="section" id="categories-par-mois">
+  <div class="container">
+    <h2 class="section-title">Accédez aux contenus</h2>
+    <p class="lead">Inscrivez-vous pour découvrir les catégories, les sujets PDF, les corrections et les examens interactifs.</p>
+    <div class="hero-actions" style="margin-top:1rem;">
+      <a class="btn btn-primary" href="{% url 'accounts:signup' %}">Créer un compte</a>
+      <a class="btn btn-secondary" href="{% url 'accounts:login' %}">Se connecter</a>
+    </div>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

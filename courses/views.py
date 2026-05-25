@@ -268,6 +268,7 @@ def home(request):
     )
 
 
+@login_required
 def category_months(request, slug):
     category = get_object_or_404(Category, slug=slug)
     
