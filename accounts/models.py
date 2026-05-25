@@ -38,6 +38,15 @@ class UserProfile(models.Model):
             "aucun accès aux données par catégorie."
         ),
     )
+    candidate_category = models.ForeignKey(
+        "courses.Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="candidates",
+        verbose_name="catégorie choisie",
+        help_text="Catégorie sélectionnée par le candidat lors de son inscription.",
+    )
 
     class Meta:
         verbose_name = "profil utilisateur"

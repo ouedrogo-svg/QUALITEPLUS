@@ -37,6 +37,12 @@ def _unique_username(first_name: str, last_name: str) -> str:
 class SignUpForm(forms.ModelForm):
     last_name = forms.CharField(label="Nom", max_length=150)
     first_name = forms.CharField(label="Prénom", max_length=150)
+    category = forms.ModelChoiceField(
+        queryset=None, 
+        label="Votre catégorie",
+        empty_label="Sélectionnez votre catégorie...",
+        required=True
+    )
     password1 = forms.CharField(
         label="Mot de passe",
         widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
@@ -52,7 +58,9 @@ class SignUpForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.order_fields(["last_name", "first_name", "password1", "password2"])
+        from courses.models import Category
+        self.fields["category"].queryset = Category.objects.all().order_by("name")
+        self.order_fields(["last_name", "first_name", "category", "password1", "password2"])
         for field in self.fields.values():
             field.widget.attrs.setdefault("class", "form-control")
 
@@ -91,6 +99,11 @@ class SignUpForm(forms.ModelForm):
         user.set_password(self.cleaned_data["password1"])
         if commit:
             user.save()
+            from .models import UserProfile
+            UserProfile.objects.create(
+                user=user,
+                candidate_category=self.cleaned_data.get("category")
+            )
         return user
 
 

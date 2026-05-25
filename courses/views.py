@@ -218,12 +218,17 @@ def _home_categories_queryset(user):
             user_can_access_content_formateur_space,
         )
 
+        # Si c'est un formateur, on utilise le filtrage formateur existant.
         if user_can_access_content_formateur_space(user):
             qs = formateur_category_queryset(user, assigned_only=True).annotate(
                 n_pdf=Count("monthly_contents", distinct=True),
                 n_corrections=Count("monthly_corrections", distinct=True),
                 n_exams=Count("monthly_exams", distinct=True),
             )
+        # Si c'est un candidat avec une catégorie choisie, on le restreint à cette catégorie.
+        elif hasattr(user, "profile") and user.profile.candidate_category_id:
+            qs = qs.filter(pk=user.profile.candidate_category_id)
+            
     return qs.order_by("name")
 
 
@@ -265,6 +270,14 @@ def home(request):
 
 def category_months(request, slug):
     category = get_object_or_404(Category, slug=slug)
+    
+    # Sécurité Candidat : Ne peut voir que sa catégorie choisie
+    if request.user.is_authenticated and not getattr(request.user, "is_superuser", False):
+        if hasattr(request.user, "profile") and request.user.profile.candidate_category_id:
+            if category.pk != request.user.profile.candidate_category_id:
+                messages.error(request, "Vous ne pouvez accéder qu'à votre catégorie choisie.")
+                return redirect("courses:home")
+
     is_formateur_category_access = _user_has_formateur_category_access(
         request.user, category
     )
@@ -301,6 +314,14 @@ def category_months(request, slug):
 
 def category_month_detail(request, slug, year, month):
     category = get_object_or_404(Category, slug=slug)
+
+    # Sécurité Candidat : Ne peut voir que sa catégorie choisie
+    if request.user.is_authenticated and not getattr(request.user, "is_superuser", False):
+        if hasattr(request.user, "profile") and request.user.profile.candidate_category_id:
+            if category.pk != request.user.profile.candidate_category_id:
+                messages.error(request, "Vous ne pouvez accéder qu'à votre catégorie choisie.")
+                return redirect("courses:home")
+
     if month < 1 or month > 12:
         raise Http404()
     hub_url = reverse(
