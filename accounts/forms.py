@@ -99,11 +99,12 @@ class SignUpForm(forms.ModelForm):
         user.set_password(self.cleaned_data["password1"])
         if commit:
             user.save()
+            # Le profil est créé par le signal post_save dans signals.py
+            # On récupère le profil existant et on met à jour la catégorie
             from .models import UserProfile
-            UserProfile.objects.create(
-                user=user,
-                candidate_category=self.cleaned_data.get("category")
-            )
+            profile, created = UserProfile.objects.get_or_create(user=user)
+            profile.candidate_category = self.cleaned_data.get("category")
+            profile.save()
         return user
 
 
