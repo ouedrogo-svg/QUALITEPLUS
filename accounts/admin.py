@@ -11,6 +11,7 @@ class UserProfileInline(admin.StackedInline):
     verbose_name_plural = "Profil / droits formateur"
     filter_horizontal = ("categories",)
     fields = (
+        "candidate_category",
         "is_platform_formateur",
         "is_content_formateur",
         "categories",

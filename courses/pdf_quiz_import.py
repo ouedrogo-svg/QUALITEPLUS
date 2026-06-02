@@ -218,6 +218,11 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                         page_chunks.append(rows[data_start:])
                     elif _table_has_option_rows(rows):
                         page_chunks.append(rows)
+                    elif layout_cols and len(rows[0]) >= layout_cols[1] + 1:
+                        # Tableau sans N° ni options explicites, mais largeur compatible
+                        # (ex: début de question en bas de page ou suite au milieu).
+                        if any(any((c or "").strip() for c in r) for r in rows):
+                            page_chunks.append(rows)
                 if not page_chunks:
                     continue
                 i_o, i_r = layout_cols or (0, max(len(r) for r in page_chunks[0]) - 1)
@@ -286,28 +291,43 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
 
             first_ordre_n = _parse_ordre_from_row(rows[first_ordre_i], i_o)
 
-            # Lignes avant le N° d’ordre = suite de la question précédente (souvent page suivante)
-            if (
-                first_ordre_i > 0
-                and first_ordre_n
-                and _valid_question_number(first_ordre_n - 1)
-            ):
-                target_n = first_ordre_n - 1
-                if target_n in by_number:
-                    lead_parts: list[str] = []
-                    for r in rows[:first_ordre_i]:
-                        row_cc = _content_column_indices(i_o, i_r, len(r))
-                        chunk = _row_merged_content(r, row_cc or content_cols)
-                        if chunk and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE):
-                            lead_parts.append(chunk)
-                    if lead_parts and len(lead_parts) <= 12:
+            # Lignes avant le N° d'ordre = suite de la question précédente
+            # OU début de la question courante (quand le contenu commence en fin
+            # de page précédente et le numéro n'apparaît qu'en haut de la suivante).
+            if first_ordre_i > 0 and first_ordre_n:
+                lead_parts: list[str] = []
+                for r in rows[:first_ordre_i]:
+                    row_cc = _content_column_indices(i_o, i_r, len(r))
+                    chunk = _row_merged_content(r, row_cc or content_cols)
+                    if chunk and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE):
+                        lead_parts.append(chunk)
+                if lead_parts and len(lead_parts) <= 12:
+                    applied = False
+                    # Essai 1 : enrichir la question précédente (cas classique)
+                    prev_n = first_ordre_n - 1
+                    if _valid_question_number(prev_n) and prev_n in by_number:
                         enriched = _enrich_spec_with_continuation(
-                            by_number[target_n], lead_parts
+                            by_number[prev_n], lead_parts
                         )
-                        if _spec_is_plausible(enriched) and _spec_richness(enriched) > _spec_richness(
-                            by_number[target_n]
+                        if (
+                            _spec_is_plausible(enriched)
+                            and _spec_richness(enriched) > _spec_richness(by_number[prev_n])
                         ):
-                            by_number[target_n] = enriched
+                            by_number[prev_n] = enriched
+                            applied = True
+                    # Essai 2 : prépendre au contenu de la question courante
+                    # (le contenu commence en bas de la page précédente, le N° est ici)
+                    if not applied and first_ordre_n in by_number:
+                        enriched = _enrich_spec_with_continuation(
+                            by_number[first_ordre_n], lead_parts, prepend=True
+                        )
+                        if _spec_richness(enriched) > _spec_richness(by_number[first_ordre_n]):
+                            by_number[first_ordre_n] = enriched
+                    elif not applied and first_ordre_n not in by_number:
+                        # La question n'existe pas encore — on la créera plus tard
+                        # avec le tableau complet ; on injecte les lignes de tête
+                        # dans le bloc courant comme amorce.
+                        pass
 
             # Petit tableau isolé (ex. question 60 seule) non capté par la consolidation
             if len(rows) <= 12 and first_ordre_n:

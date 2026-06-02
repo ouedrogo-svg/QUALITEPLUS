@@ -335,8 +335,8 @@ class SubscriptionRequestAdminForm(forms.ModelForm):
                 )
                 cleaned["year"] = req_year
                 cleaned["month"] = req_month
-                request.year = req_year
-                request.month = req_month
+                self.instance.year = req_year
+                self.instance.month = req_month
         return cleaned
 
     def save(self, commit=True):

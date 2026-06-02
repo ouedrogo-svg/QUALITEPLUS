@@ -207,27 +207,34 @@ def _annotate_period_access(periods: list[dict], user, category: Category) -> No
 
 
 def _home_categories_queryset(user):
+    # Si l'utilisateur n'est pas connecté, on ne renvoie AUCUNE catégorie
+    if not user.is_authenticated:
+        return Category.objects.none()
+
     qs = Category.objects.annotate(
         n_pdf=Count("monthly_contents", distinct=True),
         n_corrections=Count("monthly_corrections", distinct=True),
         n_exams=Count("monthly_exams", distinct=True),
     )
-    if user.is_authenticated:
-        from .formateur_permissions import (
-            formateur_category_queryset,
-            user_can_access_content_formateur_space,
-        )
+    
+    from .formateur_permissions import (
+        formateur_category_queryset,
+        user_can_access_content_formateur_space,
+    )
 
-        # Si c'est un formateur, on utilise le filtrage formateur existant.
-        if user_can_access_content_formateur_space(user):
-            qs = formateur_category_queryset(user, assigned_only=True).annotate(
-                n_pdf=Count("monthly_contents", distinct=True),
-                n_corrections=Count("monthly_corrections", distinct=True),
-                n_exams=Count("monthly_exams", distinct=True),
-            )
-        # Si c'est un candidat avec une catégorie choisie, on le restreint à cette catégorie.
-        elif hasattr(user, "profile") and user.profile.candidate_category_id:
-            qs = qs.filter(pk=user.profile.candidate_category_id)
+    # Si c'est un formateur, on utilise le filtrage formateur existant.
+    if user_can_access_content_formateur_space(user):
+        qs = formateur_category_queryset(user, assigned_only=True).annotate(
+            n_pdf=Count("monthly_contents", distinct=True),
+            n_corrections=Count("monthly_corrections", distinct=True),
+            n_exams=Count("monthly_exams", distinct=True),
+        )
+    # Si c'est un candidat avec une catégorie choisie, on le restreint à cette catégorie.
+    elif hasattr(user, "profile") and user.profile.candidate_category_id:
+        qs = qs.filter(pk=user.profile.candidate_category_id)
+    else:
+        # Utilisateur connecté sans profil ou sans catégorie : ne voit rien par défaut
+        return Category.objects.none()
             
     return qs.order_by("name")
 

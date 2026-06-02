@@ -556,12 +556,16 @@ def _spec_richness(spec: dict) -> tuple[int, int]:
     return (len(spec.get("texts") or []), len(spec.get("prompt") or ""))
 
 
-def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str]) -> dict:
-    """Ajoute la suite d’une question (ex. options c) d) sur la page suivante)."""
+def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str], *, prepend: bool = False) -> dict:
+    """
+    Ajoute la suite d’une question (ex. options c) d) sur la page suivante)
+    OU le début d'une question (quand le numéro n'apparaît qu'après quelques lignes).
+    """
     continuation_parts = _dedupe_and_clean_block_parts(continuation_parts)
     extra = "\n".join(p for p in continuation_parts if p).strip()
     if not extra:
         return spec
+        
     _, embedded_extra = _embedded_from_merged_question_text(extra)
     existing = list(spec.get("texts") or [])
     seen = {t.strip().lower() for t in existing}
@@ -571,15 +575,23 @@ def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str]) ->
         if key and key not in seen:
             merged.append(t)
             seen.add(key)
+            
     if len(merged) <= len(existing):
-        combined = f"{spec.get('prompt', '')}\n{extra}".strip()
+        # Pas de nouvelles propositions détectées -> c'est de l'énoncé pur
+        if prepend:
+            combined = f"{extra}\n{spec.get('prompt', '')}".strip()
+        else:
+            combined = f"{spec.get('prompt', '')}\n{extra}".strip()
+            
         stem, embedded = _embedded_from_merged_question_text(combined)
-        if len(embedded) > len(existing):
+        if len(embedded) > len(existing) or len(combined) > len(spec.get('prompt', '')):
             out = dict(spec)
-            out["prompt"] = _normalize_stem_text(stem or spec.get("prompt", ""))
-            out["texts"] = embedded
+            out["prompt"] = _normalize_stem_text(stem or combined)
+            if len(embedded) > len(existing):
+                out["texts"] = embedded
             return _sanitize_question_spec_dict(out)
         return spec
+        
     out = dict(spec)
     out["texts"] = merged
     return _sanitize_question_spec_dict(out)
@@ -816,13 +828,16 @@ def _parse_oqr_multiline_blocks(
 ) -> list[dict]:
     """
     Corrigé PDF réel : une question occupe plusieurs lignes du tableau.
-    - Ligne de tête : N° d’ordre (col. 0) + lettre de réponse (dernière col.)
+    - Ligne de tête : N° d'ordre (col. 0) + lettre de réponse (dernière col.)
     - Lignes suivantes : énoncé et « A. … B. … » dans les colonnes centrales (souvent col. 2).
+    Gère le cas où le contenu commence en fin de page et le numéro est sur la page suivante.
     """
     specs: list[dict] = []
     current_n: int | None = None
     current_rep = ""
     block_parts: list[str] = []
+    # Lignes orphelines avant le premier N° (continuation inter-pages)
+    orphan_parts: list[str] = []
 
     def flush() -> None:
         nonlocal current_n, current_rep, block_parts
@@ -857,9 +872,21 @@ def _parse_oqr_multiline_blocks(
             flush()
             current_n = n_ord
             current_rep = _rep_cell_from_row(row, i_r)
-            block_parts = [chunk] if chunk else []
+            # Si des lignes orphelines précèdent ce premier numéro, elles
+            # font partie de cette question (début en bas de page précédente).
+            if orphan_parts:
+                # Le numéro de question est dans 'chunk', mais comme on prépend 
+                # des lignes, il se retrouverait au milieu de l'énoncé.
+                clean_chunk = _strip_question_number_prefix(chunk)
+                block_parts = orphan_parts + ([clean_chunk] if clean_chunk else [])
+                orphan_parts = []
+            else:
+                block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
             block_parts.append(chunk)
+        elif current_n is None and chunk:
+            # Pas encore de numéro vu — garder pour la prochaine question
+            orphan_parts.append(chunk)
     flush()
     return specs
 

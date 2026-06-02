@@ -9,4 +9,5 @@ from .models import UserProfile
 def ensure_user_profile(sender, instance, **kwargs):
     if kwargs.get("raw"):
         return
-    UserProfile.objects.get_or_create(user=instance)
+    if not UserProfile.objects.filter(user=instance).exists():
+        UserProfile.objects.create(user=instance)
