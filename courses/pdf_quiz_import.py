@@ -242,18 +242,24 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                             page_chunks.append(rows)
                             
                 if not page_chunks:
-                    # Si aucun tableau n'est trouvé mais qu'on a du texte "libre", 
-                    # on pourrait tenter de l'ajouter comme une ligne unique si layout_cols existe.
-                    txt = page.extract_text()
-                    if txt and layout_cols:
-                        # On simule une ligne de tableau avec le texte dans la colonne question
-                        i_o, i_r = layout_cols
-                        dummy_row = [""] * (max(i_o, i_r) + 1)
-                        # On met le texte dans la colonne centrale (question)
-                        i_q = i_o + 1 if i_o + 1 < i_r else i_o
-                        if i_q < len(dummy_row):
-                            dummy_row[i_q] = txt
-                            page_chunks.append([dummy_row])
+                     # Si aucun tableau n'est trouvé mais qu'on a du texte "libre", 
+                     # on tente d'extraire les lignes significatives.
+                     txt = page.extract_text()
+                     if txt and layout_cols:
+                         lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
+                         for ln in lines:
+                             # On ignore les lignes trop courtes ou qui ressemblent à des entêtes
+                             if len(ln) < 10 and not _parse_ordre_cell(ln):
+                                 continue
+                             if "page" in ln.lower() or "session" in ln.lower():
+                                 continue
+                                 
+                             i_o, i_r = layout_cols
+                             dummy_row = [""] * (max(i_o, i_r) + 1)
+                             i_q = i_o + 1 if i_o + 1 < i_r else i_o
+                             if i_q < len(dummy_row):
+                                 dummy_row[i_q] = ln
+                                 page_chunks.append([dummy_row])
 
                 if not page_chunks:
                     continue

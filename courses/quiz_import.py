@@ -369,13 +369,13 @@ def _parse_ordre_cell(cell: str) -> int | None:
     t = (cell or "").strip()
     if not t:
         return None
-    # Cas classique : le numéro est seul dans la cellule
-    m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s*[\.\)\:]?\s*$", t, flags=re.IGNORECASE)
+    # Cas classique : le numéro est seul ou précédé de N°, Q, Question
+    m = re.match(r"^\s*(?:n[o°]|q(?:uestion)?\s*)?\s*(\d{1,3})\s*[\.\)\:]?\s*$", t, flags=re.IGNORECASE)
     if not m:
         m = re.match(r"^\s*(\d{1,3})\s*$", t)
     if not m:
-        # Cas plus souple : le numéro est suivi d'un espace (ex: "12 ")
-        m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s+", t, flags=re.IGNORECASE)
+        # Cas plus souple : le numéro est suivi d'un espace ou d'un séparateur et de texte
+        m = re.match(r"^\s*(?:n[o°]|q(?:uestion)?\s*)?\s*(\d{1,3})\s*[\.\)\:、\-–\s]", t, flags=re.IGNORECASE)
     if not m:
         return None
     n = int(m.group(1))
@@ -828,10 +828,10 @@ def _looks_like_option_line(text: str) -> bool:
     if not t:
         return False
     # A), B., a), b.
-    if re.match(r"^[A-Da-d]\s*[\)\.]", t):
+    if re.match(r"^[A-Da-d]\s*[\)\.\-–]", t):
         return True
     # 1), 2. (si utilisé pour les options)
-    if re.match(r"^[1-4]\s*[\)\.]", t):
+    if re.match(r"^[1-4]\s*[\)\.\-–]", t):
         return True
     return False
 
@@ -843,6 +843,17 @@ def _has_any_options_in_block(parts: list[str]) -> bool:
             return True
         if _OPTION_LETTER_MARK.search(p):
             return True
+    return False
+
+
+def _looks_like_new_question_start(text: str) -> bool:
+    """Heuristique : le texte ressemble au début d'un nouvel énoncé."""
+    t = (text or "").strip()
+    if len(t) < 10:
+        return False
+    # Commence par une majuscule et contient plusieurs mots
+    if re.match(r"^[A-ZÀÂÉÈÊËÏÎÔÙÛÜÇ]", t) and len(t.split()) >= 3:
+        return True
     return False
 
 
@@ -900,7 +911,7 @@ def _parse_oqr_multiline_blocks(
         # Fallback : si le numéro n'est pas dans la colonne N°, il est peut-être 
         # fusionné au début de la colonne texte (ex: "12. Quel est...")
         if n_ord is None and chunk:
-            m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s*[\.\)\:、\-–]\s*", chunk, flags=re.IGNORECASE)
+            m = re.match(r"^\s*(?:n[o°]|q(?:uestion)?\s*)?\s*(\d{1,3})\s*[\.\)\:、\-–]\s*", chunk, flags=re.IGNORECASE)
             if m:
                 potential_n = int(m.group(1))
                 if _valid_question_number(potential_n):
@@ -925,14 +936,13 @@ def _parse_oqr_multiline_blocks(
                 block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
             # Si on a déjà des options dans le bloc courant, et que cette nouvelle
-            # ligne ne ressemble pas à une option ni à un "NB:", c'est probablement
-            # le début de la question suivante qui n'a pas encore de numéro.
+            # ligne ressemble au début d'un nouvel énoncé, c'est probablement
+            # la question suivante (orpheline).
             if (
                 _has_any_options_in_block(block_parts) 
+                and _looks_like_new_question_start(chunk)
                 and not _looks_like_option_line(chunk)
                 and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE)
-                # On évite de flusher si c'est juste une suite de texte sans ponctuation finale
-                and (not block_parts or re.search(r"[.!?;:]\s*$", block_parts[-1]))
             ):
                 flush()
                 current_n = None
