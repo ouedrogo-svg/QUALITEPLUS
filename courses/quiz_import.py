@@ -369,9 +369,13 @@ def _parse_ordre_cell(cell: str) -> int | None:
     t = (cell or "").strip()
     if not t:
         return None
+    # Cas classique : le numéro est seul dans la cellule
     m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s*[\.\)\:]?\s*$", t, flags=re.IGNORECASE)
     if not m:
         m = re.match(r"^\s*(\d{1,3})\s*$", t)
+    if not m:
+        # Cas plus souple : le numéro est suivi d'un espace (ex: "12 ")
+        m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s+", t, flags=re.IGNORECASE)
     if not m:
         return None
     n = int(m.group(1))
@@ -818,6 +822,30 @@ def _embedded_from_merged_question_text(full: str) -> tuple[str, list[str]]:
     return _normalize_stem_text(_strip_question_number_prefix(full)), []
 
 
+def _looks_like_option_line(text: str) -> bool:
+    """Vrai si la ligne commence par une marque de proposition (A., B), 1., etc.)."""
+    t = (text or "").strip()
+    if not t:
+        return False
+    # A), B., a), b.
+    if re.match(r"^[A-Da-d]\s*[\)\.]", t):
+        return True
+    # 1), 2. (si utilisé pour les options)
+    if re.match(r"^[1-4]\s*[\)\.]", t):
+        return True
+    return False
+
+
+def _has_any_options_in_block(parts: list[str]) -> bool:
+    """Vrai si l'un des morceaux contient déjà une marque de proposition."""
+    for p in parts:
+        if _looks_like_option_line(p):
+            return True
+        if _OPTION_LETTER_MARK.search(p):
+            return True
+    return False
+
+
 def _parse_oqr_multiline_blocks(
     data_rows: list[list[str]],
     *,
@@ -868,6 +896,19 @@ def _parse_oqr_multiline_blocks(
         if not row_cc:
             row_cc = _content_column_indices(i_o, i_r, width) or [i_q]
         chunk = _row_merged_content(row, row_cc)
+        
+        # Fallback : si le numéro n'est pas dans la colonne N°, il est peut-être 
+        # fusionné au début de la colonne texte (ex: "12. Quel est...")
+        if n_ord is None and chunk:
+            m = re.match(r"^\s*(?:n[o°]\s*)?(\d{1,3})\s*[\.\)\:、\-–]\s*", chunk, flags=re.IGNORECASE)
+            if m:
+                potential_n = int(m.group(1))
+                if _valid_question_number(potential_n):
+                    # On vérifie que ce n'est pas juste une proposition "1) ..."
+                    # en regardant s'il y a déjà un numéro en cours ou si c'est le début.
+                    if current_n is None or potential_n == current_n + 1 or potential_n == 1:
+                        n_ord = potential_n
+
         if _valid_question_number(n_ord):
             flush()
             current_n = n_ord
@@ -883,7 +924,22 @@ def _parse_oqr_multiline_blocks(
             else:
                 block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
-            block_parts.append(chunk)
+            # Si on a déjà des options dans le bloc courant, et que cette nouvelle
+            # ligne ne ressemble pas à une option ni à un "NB:", c'est probablement
+            # le début de la question suivante qui n'a pas encore de numéro.
+            if (
+                _has_any_options_in_block(block_parts) 
+                and not _looks_like_option_line(chunk)
+                and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE)
+                # On évite de flusher si c'est juste une suite de texte sans ponctuation finale
+                and (not block_parts or re.search(r"[.!?;:]\s*$", block_parts[-1]))
+            ):
+                flush()
+                current_n = None
+                current_rep = ""
+                orphan_parts.append(chunk)
+            else:
+                block_parts.append(chunk)
         elif current_n is None and chunk:
             # Pas encore de numéro vu — garder pour la prochaine question
             orphan_parts.append(chunk)

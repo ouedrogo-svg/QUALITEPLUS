@@ -193,18 +193,36 @@ def _append_rows_skip_page_duplicates(
 
 def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
     """
-    Sur chaque page, concatène les lignes de tous les tableaux utiles
-    (corrigé principal + suite de question en fin de page).
+    Sur chaque page, concatène les lignes de tous les tableaux utiles.
+    Utilise plusieurs stratégies d'extraction pour ne pas rater les fragments sans bordures.
     """
     import pdfplumber
 
     consolidated: list[list[str]] = []
     layout_cols: tuple[int, int] | None = None
+    
     try:
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
                 page_chunks: list[list[str]] = []
-                for raw in page.extract_tables() or []:
+                
+                # On essaie d'abord l'extraction standard
+                raw_tables = page.extract_tables() or []
+                
+                # Si rien n'est trouvé, on essaie des stratégies plus agressives
+                if not raw_tables:
+                    for settings in _TABLE_EXTRACT_PRESETS[1:4]: # Quelques presets de base
+                        raw_tables = page.extract_tables(table_settings=settings) or []
+                        if raw_tables:
+                            break
+                            
+                # En dernier recours, clustering de mots
+                if not raw_tables:
+                    pseudo = _words_cluster_matrix_from_page(page, 12.0)
+                    if pseudo:
+                        raw_tables = [pseudo]
+
+                for raw in raw_tables:
                     rows = _normalize_matrix_rows(raw)
                     if not rows:
                         continue
@@ -220,11 +238,26 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                         page_chunks.append(rows)
                     elif layout_cols and len(rows[0]) >= layout_cols[1] + 1:
                         # Tableau sans N° ni options explicites, mais largeur compatible
-                        # (ex: début de question en bas de page ou suite au milieu).
                         if any(any((c or "").strip() for c in r) for r in rows):
                             page_chunks.append(rows)
+                            
+                if not page_chunks:
+                    # Si aucun tableau n'est trouvé mais qu'on a du texte "libre", 
+                    # on pourrait tenter de l'ajouter comme une ligne unique si layout_cols existe.
+                    txt = page.extract_text()
+                    if txt and layout_cols:
+                        # On simule une ligne de tableau avec le texte dans la colonne question
+                        i_o, i_r = layout_cols
+                        dummy_row = [""] * (max(i_o, i_r) + 1)
+                        # On met le texte dans la colonne centrale (question)
+                        i_q = i_o + 1 if i_o + 1 < i_r else i_o
+                        if i_q < len(dummy_row):
+                            dummy_row[i_q] = txt
+                            page_chunks.append([dummy_row])
+
                 if not page_chunks:
                     continue
+                    
                 i_o, i_r = layout_cols or (0, max(len(r) for r in page_chunks[0]) - 1)
                 for chunk in page_chunks:
                     _append_rows_skip_page_duplicates(consolidated, chunk, i_o=i_o, i_r=i_r)
