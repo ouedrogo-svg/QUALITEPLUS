@@ -302,6 +302,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                 if not allow_incomplete and not _spec_is_plausible(spec):
                     continue
                 if n not in by_number or _spec_richness(spec) > _spec_richness(by_number[n]):
+                    logger.info(f"Absorbant question #{n} (options : {len(spec.get('texts', []))}, prompt : {spec.get('prompt','')[:50]})")
                     by_number[n] = spec
 
         data_rows = _consolidated_correction_rows_from_pdf(path)
@@ -309,6 +310,8 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
             absorb(specs_from_correction_table_rows(data_rows))
 
         last_ordre: int | None = max(by_number.keys()) if by_number else None
+        logger.info(f"Après consolidation initiale : {len(by_number)} questions")
+        
         for rows in _iter_raw_tables_from_pdf(path):
             layout = _table_correction_layout(rows)
             if not layout:
@@ -354,6 +357,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                             _spec_is_plausible(enriched)
                             and _spec_richness(enriched) > _spec_richness(by_number[prev_n])
                         ):
+                            logger.info(f"Enrichissant question #{prev_n} avec {len(lead_parts)} lignes")
                             by_number[prev_n] = enriched
                             applied = True
                     # Essai 2 : prépendre au contenu de la question courante
@@ -363,6 +367,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                             by_number[first_ordre_n], lead_parts, prepend=True
                         )
                         if _spec_richness(enriched) > _spec_richness(by_number[first_ordre_n]):
+                            logger.info(f"Enrichissant (préfixe) question #{first_ordre_n} avec {len(lead_parts)} lignes")
                             by_number[first_ordre_n] = enriched
                     elif not applied and first_ordre_n not in by_number:
                         # La question n'existe pas encore — on la créera plus tard
@@ -380,9 +385,15 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
             if by_number:
                 last_ordre = max(by_number.keys())
 
+        logger.info(f"Avant plausibilité : {len(by_number)} questions")
+        
         by_number = {
             n: s for n, s in by_number.items() if _spec_is_plausible(s)
         }
+        
+        logger.info(f"Après plausibilité : {len(by_number)} questions")
+        logger.info(f"Numéros de questions : {sorted(by_number.keys())}")
+        
         return [by_number[i] for i in sorted(by_number.keys())]
     except Exception:
         logger.exception("Lecture PDF pour quiz impossible : %s", path)

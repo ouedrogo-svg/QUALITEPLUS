@@ -1297,6 +1297,8 @@ def apply_question_specs_to_quiz(
 ) -> tuple[int, int]:
     """Remplace toutes les questions du quiz. Retourne (lignes, nombre_questions)."""
     from .models import ExamQuizOption, ExamQuizQuestion, QuizOption, QuizQuestion
+    import logging
+    logger = logging.getLogger(__name__)
 
     if question_model is None:
         question_model = QuizQuestion
@@ -1304,15 +1306,21 @@ def apply_question_specs_to_quiz(
         option_model = QuizOption
 
     specs = _finalize_quiz_specs(specs)
+    logger.info(f"Spécifications initiales : {len(specs)} questions")
 
     quiz.questions.all().delete()
     n_questions = 0
-    for spec in specs:
+    for i, spec in enumerate(specs, start=1):
         spec = _sanitize_question_spec_dict(spec)
-        if len(spec.get("texts") or []) < 2:
+        spec_num = spec.get("number")
+        spec_texts = len(spec.get("texts") or [])
+        spec_prompt = (spec.get("prompt") or "")[:50]
+        if spec_texts < 2:
+            logger.warning(f"Question #{spec_num} sautée : pas assez d'options ({spec_texts}) - prompt : {spec_prompt}")
             continue
         prompt = _clip(_normalize_stem_text(spec["prompt"]), 4000)
         qnum = spec["number"]
+        logger.info(f"Création question #{qnum} avec {spec_texts} options")
         qq = question_model.objects.create(
             **{quiz_fk_field: quiz},
             order=qnum - 1,
@@ -1327,6 +1335,7 @@ def apply_question_specs_to_quiz(
                 text=_clip(strip_nb_references(t), 500),
                 is_correct=j in correct,
             )
+    logger.info(f"Fin : {len(specs)} specs, {n_questions} questions créées")
     return len(specs), n_questions
 
 
