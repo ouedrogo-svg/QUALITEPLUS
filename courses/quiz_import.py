@@ -935,21 +935,22 @@ def _parse_oqr_multiline_blocks(
             else:
                 block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
-            # Si on a déjà des options dans le bloc courant, et que cette nouvelle
-            # ligne ressemble au début d'un nouvel énoncé, c'est probablement
-            # la question suivante (orpheline).
-            if (
-                _has_any_options_in_block(block_parts) 
-                and _looks_like_new_question_start(chunk)
-                and not _looks_like_option_line(chunk)
-                and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE)
-            ):
-                flush()
-                current_n = None
-                current_rep = ""
-                orphan_parts.append(chunk)
-            else:
-                block_parts.append(chunk)
+            # Désactivé temporairement : la logique de flush anticipé a pu couper la 60e question
+            # # Si on a déjà des options dans le bloc courant, et que cette nouvelle
+            # # ligne ressemble au début d'un nouvel énoncé, c'est probablement
+            # # la question suivante (orpheline).
+            # if (
+            #     _has_any_options_in_block(block_parts)
+            #     and _looks_like_new_question_start(chunk)
+            #     and not _looks_like_option_line(chunk)
+            #     and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE)
+            # ):
+            #     flush()
+            #     current_n = None
+            #     current_rep = ""
+            #     orphan_parts.append(chunk)
+            # else:
+            block_parts.append(chunk)
         elif current_n is None and chunk:
             # Pas encore de numéro vu — garder pour la prochaine question
             orphan_parts.append(chunk)
