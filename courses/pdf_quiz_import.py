@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import tempfile
 from collections import defaultdict
 
 from django.core.cache import cache
@@ -387,6 +389,55 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
         return []
 
 
+
+
+def _resolve_pdf_to_local_path(pdf_field):
+    """
+    Retourne un chemin local vers le PDF.
+    - FileSystemStorage : retourne directement .path
+    - Cloudinary / stockage distant : telecharge dans un fichier temporaire.
+    Retourne None si impossible.
+    """
+    try:
+        return pdf_field.path
+    except (ValueError, NotImplementedError, AttributeError):
+        pass
+    # Stockage distant : telecharger via l'URL
+    try:
+        url = pdf_field.url
+    except Exception:
+        return None
+    if not url or not url.startswith('http'):
+        return None
+    try:
+        import requests
+        r = requests.get(url, timeout=60)
+        r.raise_for_status()
+    except Exception:
+        logger.warning('Impossible de telecharger le PDF distant : %s', url)
+        return None
+    suffix = os.path.splitext(pdf_field.name)[1] or '.pdf'
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp.write(r.content)
+    tmp.close()
+    return tmp.name
+
+
+def _cleanup_temp_pdf(path, pdf_field):
+    """Supprime le fichier temporaire si c'etait un telechargement distant."""
+    try:
+        local = pdf_field.path
+        if local == path:
+            return
+    except (ValueError, NotImplementedError, AttributeError):
+        pass
+    try:
+        if path and os.path.exists(path):
+            os.unlink(path)
+    except OSError:
+        pass
+
+
 def import_quiz_from_pdf_document(
     quiz,
     document,
@@ -403,12 +454,12 @@ def import_quiz_from_pdf_document(
     n = 0
     if not document.pdf:
         return 0
+    path = _resolve_pdf_to_local_path(document.pdf)
+    if path is None:
+        logger.warning("Impossible d'obtenir un chemin local pour le PDF.")
+        return 0
     try:
         try:
-            path = document.pdf.path
-        except (ValueError, NotImplementedError):
-            logger.warning("Stockage de fichiers sans chemin local : impossible d’analyser le PDF.")
-        else:
             specs = best_question_specs_from_correction_pdf(path)
             if specs:
                 _, n = apply_question_specs_to_quiz(
@@ -419,10 +470,11 @@ def import_quiz_from_pdf_document(
                     quiz_fk_field=quiz_fk_field,
                 )
             else:
-                # Ne pas effacer un quiz existant si le PDF n’a pas pu être lu.
                 n = quiz.questions.count()
+        finally:
+            _cleanup_temp_pdf(path, document.pdf)
     except Exception:
-        logger.exception("Erreur lors de l’analyse ou de l’import du quiz depuis le PDF")
+        logger.exception("Erreur lors de l'analyse ou de l'import du quiz depuis le PDF")
         n = 0
     finally:
         quiz_model.objects.filter(pk=quiz.pk).update(
@@ -502,10 +554,10 @@ def _try_rebuild_quiz_for_document(
     n = quiz.n_questions
     if n > 0 or not document.pdf:
         return n
-    try:
-        document.pdf.path
-    except (ValueError, NotImplementedError):
+    path = _resolve_pdf_to_local_path(document.pdf)
+    if path is None:
         return 0
+    _cleanup_temp_pdf(path, document.pdf)
     cache_key = f"{cache_prefix}:{document.pk}:{document.pdf.name}"
     if cache.get(cache_key):
         return 0

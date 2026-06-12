@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.db.models import Count, Q
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse, Http404
+from django.http import FileResponse, HttpResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -45,6 +45,48 @@ from .quiz_session import load_quiz_questions, process_quiz_post
 from .pdf_quiz_import import try_rebuild_quiz_for_correction, try_rebuild_quiz_for_exam
 
 _OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _serve_pdf(pdf_field, *, inline: bool = True):
+    """
+    Sert un fichier PDF depuis le stockage configuré (local ou Cloudinary).
+    Avec Cloudinary (RawMediaCloudinaryStorage), le fichier n'est pas sur le
+    disque local : on le télécharge via son URL publique.
+    """
+    if not pdf_field:
+        raise Http404()
+    filename = os.path.basename(pdf_field.name)
+    disposition = "inline" if inline else "attachment"
+
+    # --- Stockage distant (Cloudinary) : le champ expose .url -----------
+    try:
+        url = pdf_field.url
+    except Exception:
+        url = None
+
+    if url and url.startswith("http"):
+        import requests as _req
+
+        try:
+            r = _req.get(url, timeout=30)
+            r.raise_for_status()
+        except Exception:
+            raise Http404("Le fichier PDF est introuvable sur le serveur distant.")
+        response = HttpResponse(r.content, content_type="application/pdf")
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+        response["Content-Length"] = len(r.content)
+        return response
+
+    # --- Stockage local (FileSystemStorage) ----------------------------
+    try:
+        content_file = pdf_field.open("rb")
+    except (FileNotFoundError, ValueError):
+        raise Http404("Le fichier PDF est introuvable sur le serveur.")
+    response = FileResponse(
+        content_file, as_attachment=(not inline), filename=filename
+    )
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    return response
 
 
 def _strip_legacy_question_prefix(prompt: str) -> str:
@@ -559,19 +601,7 @@ def correction_pdf_inline(request, category_slug, year, month, pk):
     category, correction = _get_monthly_correction(request, category_slug, year, month, pk)
     if not _user_has_content_access(request.user, category, year, month):
         raise Http404()
-    if not correction.pdf:
-        raise Http404()
-    filename = os.path.basename(correction.pdf.name)
-    try:
-        content_file = correction.pdf.open("rb")
-    except (FileNotFoundError, ValueError):
-        raise Http404("Le fichier PDF est introuvable sur le serveur.")
-        
-    response = FileResponse(
-        content_file, as_attachment=False, filename=filename
-    )
-    response["Content-Disposition"] = f'inline; filename="{filename}"'
-    return response
+    return _serve_pdf(correction.pdf, inline=True)
 
 
 @login_required
@@ -585,14 +615,7 @@ def correction_pdf_download(request, category_slug, year, month, pk):
         return redirect(
             _subscribe_url_for_period(category, year, month, request.get_full_path())
         )
-    if not correction.pdf:
-        raise Http404()
-    filename = os.path.basename(correction.pdf.name)
-    try:
-        content_file = correction.pdf.open("rb")
-    except (FileNotFoundError, ValueError):
-        raise Http404("Le fichier PDF est introuvable sur le serveur.")
-    return FileResponse(content_file, as_attachment=True, filename=filename)
+    return _serve_pdf(correction.pdf, inline=False)
 
 
 @login_required
@@ -701,14 +724,7 @@ def monthly_pdf_inline(request, category_slug, year, month, pk):
     )
     if not _user_has_content_access(request.user, category, year, month):
         raise Http404()
-    if not content.pdf:
-        raise Http404()
-    filename = os.path.basename(content.pdf.name)
-    response = FileResponse(
-        content.pdf.open("rb"), as_attachment=False, filename=filename
-    )
-    response["Content-Disposition"] = f'inline; filename="{filename}"'
-    return response
+    return _serve_pdf(content.pdf, inline=True)
 
 
 @login_required
@@ -729,10 +745,7 @@ def monthly_pdf_download(request, category_slug, year, month, pk):
         return redirect(
             _subscribe_url_for_period(category, year, month, request.get_full_path())
         )
-    if not content.pdf:
-        raise Http404()
-    filename = os.path.basename(content.pdf.name)
-    return FileResponse(content.pdf.open("rb"), as_attachment=True, filename=filename)
+    return _serve_pdf(content.pdf, inline=False)
 
 
 @login_required

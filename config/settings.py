@@ -35,6 +35,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "courses.apps.CoursesConfig",
     "accounts.apps.AccountsConfig",
+    "cloudinary_storage",
+    "cloudinary",
 ]
 
 MIDDLEWARE = [
@@ -120,11 +122,29 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Storage configuration
-# On utilise FileSystemStorage mais on s'assure que les dossiers existent
+# ---------------------------------------------------------------------------
+# Cloudinary — stockage persistant des fichiers média (PDF, images)
+# Les fichiers survivent aux redéploiements / suspensions de Render.
+# Variables d'environnement requises : CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY,
+# CLOUDINARY_API_SECRET  (à définir dans le dashboard Render → Environment).
+# ---------------------------------------------------------------------------
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME", default=""),
+    "API_KEY": config("CLOUDINARY_API_KEY", default=""),
+    "API_SECRET": config("CLOUDINARY_API_SECRET", default=""),
+    # Stocker les PDF tels quels (pas de transformation image)
+    "RESOURCE_TYPE": "raw",
+}
+
+_use_cloudinary = bool(CLOUDINARY_STORAGE["CLOUD_NAME"])
+
 STORAGES = {
     "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "BACKEND": (
+            "cloudinary_storage.storage.RawMediaCloudinaryStorage"
+            if _use_cloudinary
+            else "django.core.files.storage.FileSystemStorage"
+        ),
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
@@ -134,8 +154,8 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# Correction pour Render : s'assurer que MEDIA_ROOT est bien accessible
-if not os.path.exists(MEDIA_ROOT):
+# En local (pas de Cloudinary), s'assurer que le dossier media existe.
+if not _use_cloudinary and not os.path.exists(MEDIA_ROOT):
     os.makedirs(MEDIA_ROOT, exist_ok=True)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
