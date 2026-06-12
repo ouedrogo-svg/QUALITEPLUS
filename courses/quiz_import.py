@@ -266,7 +266,7 @@ def _split_stem_and_embedded_options(full_question: str) -> tuple[str, list[str]
     matches = list(marks.finditer(full))
     if len(matches) < 2:
         marks = re.compile(
-            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*([A-Da-d])\s*[\.\)\:、\-–]\s*",
+            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*([A-Za-z])\s*[\.\)\:、\-–]\s*",
             re.MULTILINE,
         )
         matches = list(marks.finditer(full))
@@ -292,7 +292,7 @@ def _split_stem_embedded_numbered_options(full_question: str) -> tuple[str, list
     if not full:
         return "", []
     marks = re.compile(
-        r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*([1-9]|1[0-9])\s*[\.\)\:、\-–]\s*",
+        r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*([1-9]|[12][0-9])\s*[\.\)\:、\-–]\s*",
         re.MULTILINE,
     )
     matches = list(marks.finditer(full))
@@ -541,7 +541,7 @@ def _try_spec_from_wide_correction_row(row: list[str]) -> dict | None:
 
 def _table_has_option_rows(rows: list[list[str]]) -> bool:
     """Lignes de propositions (a) b) …) sans numéro d’ordre — suite d’une question."""
-    pat = re.compile(r"(?:^|\n)\s*[A-Da-d1-4]\s*[\)\.]\s*\S", re.MULTILINE)
+    pat = re.compile(r"(?:^|\n)\s*[A-Za-z1-9][0-9]?\s*[\)\.]\s*\S", re.MULTILINE)
     for r in rows:
         for c in r:
             if c and pat.search(c):
