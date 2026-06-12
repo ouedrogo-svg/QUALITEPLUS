@@ -15,8 +15,8 @@ QUIZ_QUESTION_NUMBER_DEFAULT = 60
 QUIZ_QUESTION_NUMBER_ABSOLUTE_MAX = 300
 # Rétrocompatibilité (barème par défaut quand le quiz est vide).
 QUIZ_QUESTION_NUMBER_MAX = QUIZ_QUESTION_NUMBER_DEFAULT
-# QCM : exactement 4 propositions A–D (comme dans le PDF / corrigé officiel).
-QUIZ_MAX_OPTIONS = 4
+# QCM : nombre de propositions variable (pas de limite stricte).
+QUIZ_MAX_OPTIONS = 20
 
 
 def _valid_question_number(n: int | None) -> bool:
@@ -135,15 +135,15 @@ def _strip_question_number_prefix(text: str) -> str:
 
 
 _OPTION_LETTER_MARK = re.compile(
-    r"(?:^|\n)\s*([A-Da-d])\s*[\)\.]\s*\t?\s*",
+    r"(?:^|\n)\s*([A-Za-z])\s*[\)\.]\s*\t?\s*",
     re.MULTILINE,
 )
 _ANSWER_KEY_ONLY_RE = re.compile(
-    r"^[A-D](?:\s*[,;+\/|]\s*[A-D]|\s+et\s+[A-D])*$",
+    r"^[A-Z](?:\s*[,;+\/|]\s*[A-Z]|\s+et\s+[A-Z])*$",
     re.IGNORECASE,
 )
 _FALSE_OPTION_LINE_RE = re.compile(
-    r"^[A-Da-d]\s*[\)\.]\s*(?:[A-D]{2,4}|[A-D](?:\s*[,;+\/|]\s*[A-D])+)\s*$",
+    r"^[A-Za-z]\s*[\)\.]\s*(?:[A-Z]{2,20}|[A-Z](?:\s*[,;+\/|]\s*[A-Z])+)\s*$",
     re.IGNORECASE,
 )
 
@@ -158,7 +158,7 @@ def _normalize_stem_text(stem: str) -> str:
 
 def _strip_option_letter_prefix(text: str) -> str:
     """Retire « A) » ou « A. » en tête si déjà présent dans le texte extrait."""
-    return re.sub(r"^[A-Da-d]\s*[\)\.]\s*", "", (text or "").strip()).strip()
+    return re.sub(r"^[A-Za-z]\s*[\)\.]\s*", "", (text or "").strip()).strip()
 
 
 def _normalize_option_dedup_key(text: str) -> str:
@@ -170,11 +170,11 @@ def _clean_option_text_fragment(text: str) -> str:
     t = (text or "").strip()
     if not t:
         return ""
-    t = re.sub(r"\n\s*([A-Da-d])\s*$", "", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"\n\s*([A-Za-z])\s*$", "", t, flags=re.IGNORECASE).strip()
     # Ne pas tronquer « A et B » / « A ou B » (propositions légitimes du corrigé).
-    if not re.search(r"\s+(?:et|ou)\s+[A-Da-d]\s*$", t, re.IGNORECASE):
+    if not re.search(r"\s+(?:et|ou)\s+[A-Za-z]\s*$", t, re.IGNORECASE):
         if len(t) <= 48 and not re.search(r"[a-zàâéèêëïîôùûüç]{3,}", t):
-            t = re.sub(r"\s+([A-Da-d])\s*$", "", t, flags=re.IGNORECASE).strip()
+            t = re.sub(r"\s+([A-Za-z])\s*$", "", t, flags=re.IGNORECASE).strip()
     return t
 
 
@@ -187,11 +187,11 @@ def _looks_like_answer_key_not_option(text: str) -> bool:
     if re.search(r"[a-zàâäéèêëïîôùûüçœ]{2,}", t):
         return False
     compact = re.sub(r"\s+", "", t.upper())
-    if len(compact) == 1 and "A" <= compact <= "D":
+    if len(compact) == 1 and "A" <= compact <= "Z":
         return True
-    if re.fullmatch(r"[A-D]{2,4}", compact):
+    if re.fullmatch(r"[A-Z]{2,20}", compact):
         return True
-    return bool(_ANSWER_KEY_ONLY_RE.match(t) and len(t) <= 8)
+    return bool(_ANSWER_KEY_ONLY_RE.match(t) and len(t) <= 40)
 
 
 def _sanitize_spec_options(texts: list[str], correct: list[int]) -> tuple[list[str], list[int]]:
@@ -828,10 +828,10 @@ def _looks_like_option_line(text: str) -> bool:
     if not t:
         return False
     # A), B., a), b.
-    if re.match(r"^[A-Da-d]\s*[\)\.\-–]", t):
+    if re.match(r"^[A-Za-z]\s*[\)\.\-–]", t):
         return True
     # 1), 2. (si utilisé pour les options)
-    if re.match(r"^[1-4]\s*[\)\.\-–]", t):
+    if re.match(r"^[1-9][0-9]?\s*[\)\.\-–]", t):
         return True
     return False
 
