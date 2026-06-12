@@ -720,9 +720,9 @@ def _cell_looks_like_reponse(cell: str) -> bool:
     if _parse_reponses_cell(t):
         return True
     compact = re.sub(r"\s+", "", t.upper())
-    if re.fullmatch(r"[A-D]{1,4}", compact):
+    if re.fullmatch(r"[A-Z]{1,4}", compact):
         return True
-    return bool(re.match(r"^[A-D](?:\s*[,;+\/|]\s*[A-D])+$", t, re.IGNORECASE))
+    return bool(re.match(r"^[A-Z](?:\s*[,;+\/|]\s*[A-Z])+$", t, re.IGNORECASE))
 
 
 def _rep_cell_from_row(row: list[str], i_r: int) -> str:
@@ -792,7 +792,7 @@ def _merge_split_option_parts(parts: list[str]) -> list[str]:
         p = p.strip()
         if not p:
             continue
-        if out and not re.match(r"^[A-Da-d]\s*[\)\.]", p):
+        if out and not re.match(r"^[A-Za-z]\s*[\)\.]", p) and not re.match(r"^[1-9][0-9]?\s*[\)\.]", p):
             prev = out[-1]
             if not re.search(r"[.!?;:]\s*$", prev):
                 out[-1] = f"{prev}\n{p}"
