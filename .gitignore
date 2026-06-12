@@ -6,3 +6,4 @@ media/
 staticfiles/
 .env
 *_out.txt
+debug_pdf_import.py
