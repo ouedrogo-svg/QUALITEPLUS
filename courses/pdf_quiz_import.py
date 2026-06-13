@@ -205,17 +205,21 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
     
     try:
         with pdfplumber.open(path) as pdf:
-            for page in pdf.pages:
+            logger.info(f"[PDF] Ouverture du PDF, {len(pdf.pages)} pages")
+            for page_num, page in enumerate(pdf.pages, start=1):
                 page_chunks: list[list[str]] = []
+                logger.info(f"[PDF] Traitement de la page {page_num}")
                 
                 # On essaie d'abord l'extraction standard
                 raw_tables = page.extract_tables() or []
+                logger.info(f"[PDF] Page {page_num}: {len(raw_tables)} tableaux extraits standard")
                 
                 # Si rien n'est trouvé, on essaie des stratégies plus agressives
                 if not raw_tables:
                     for settings in _TABLE_EXTRACT_PRESETS[1:4]: # Quelques presets de base
                         raw_tables = page.extract_tables(table_settings=settings) or []
                         if raw_tables:
+                            logger.info(f"[PDF] Page {page_num}: {len(raw_tables)} tableaux extraits avec preset")
                             break
                             
                 # En dernier recours, clustering de mots
@@ -223,27 +227,33 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                     pseudo = _words_cluster_matrix_from_page(page, 12.0)
                     if pseudo:
                         raw_tables = [pseudo]
+                        logger.info(f"[PDF] Page {page_num}: 1 tableau extrait avec clustering de mots")
 
-                for raw in raw_tables:
+                for raw_idx, raw in enumerate(raw_tables):
                     rows = _normalize_matrix_rows(raw)
                     if not rows:
+                        logger.info(f"[PDF] Page {page_num}: tableau {raw_idx} vide après normalisation")
                         continue
                     layout = _table_correction_layout(rows)
                     if layout:
                         i_o, i_r, data_start = layout
                         layout_cols = (i_o, i_r)
+                        logger.info(f"[PDF] Page {page_num}: tableau {raw_idx} a un layout valide (i_o={i_o}, i_r={i_r})")
                         first_ordre = _first_ordre_row_index(rows)
                         if first_ordre and first_ordre > 0:
                             page_chunks.append(rows[:first_ordre])
                         page_chunks.append(rows[data_start:])
                     elif _table_has_option_rows(rows):
+                        logger.info(f"[PDF] Page {page_num}: tableau {raw_idx} a des lignes d'options")
                         page_chunks.append(rows)
                     elif layout_cols and len(rows[0]) >= layout_cols[1] + 1:
                         # Tableau sans N° ni options explicites, mais largeur compatible
                         if any(any((c or "").strip() for c in r) for r in rows):
+                            logger.info(f"[PDF] Page {page_num}: tableau {raw_idx} ajouté (largeur compatible)")
                             page_chunks.append(rows)
                             
                 if not page_chunks:
+                     logger.info(f"[PDF] Page {page_num}: pas de chunks trouvés")
                      # Si aucun tableau n'est trouvé mais qu'on a du texte "libre", 
                      # on tente d'extraire les lignes significatives.
                      txt = page.extract_text()
@@ -262,15 +272,18 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                              if i_q < len(dummy_row):
                                  dummy_row[i_q] = ln
                                  page_chunks.append([dummy_row])
+                                 logger.info(f"[PDF] Page {page_num}: ajout ligne libre: {repr(ln)}")
 
                 if not page_chunks:
                     continue
                     
                 i_o, i_r = layout_cols or (0, max(len(r) for r in page_chunks[0]) - 1)
+                logger.info(f"[PDF] Page {page_num}: ajout de {len(page_chunks)} chunks")
                 for chunk in page_chunks:
                     _append_rows_skip_page_duplicates(consolidated, chunk, i_o=i_o, i_r=i_r)
+        logger.info(f"[PDF] Consolidation terminée: {len(consolidated)} lignes totales")
     except Exception:
-        logger.debug("Consolidation lignes corrigé impossible", exc_info=True)
+        logger.exception("Consolidation lignes corrigé impossible")
         return []
     return consolidated
 

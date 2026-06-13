@@ -871,6 +871,8 @@ def _parse_oqr_multiline_blocks(
     - Lignes suivantes : énoncé et « A. … B. … » dans les colonnes centrales (souvent col. 2).
     Gère le cas où le contenu commence en fin de page et le numéro est sur la page suivante.
     """
+    import logging
+    logger = logging.getLogger(__name__)
     specs: list[dict] = []
     current_n: int | None = None
     current_rep = ""
@@ -880,26 +882,37 @@ def _parse_oqr_multiline_blocks(
 
     def flush() -> None:
         nonlocal current_n, current_rep, block_parts
+        logger.info(f"[FLUSH] Tentative de flush pour question #{current_n}, parts count: {len(block_parts)}")
         if not _valid_question_number(current_n):
+            logger.info(f"[FLUSH] Numéro invalide, abandon")
             block_parts = []
             return
         parts = _dedupe_and_clean_block_parts(block_parts)
+        logger.info(f"[FLUSH] Après dedup: {len(parts)} parts")
         block_parts = []
         if not parts:
+            logger.info(f"[FLUSH] Pas de parts, abandon")
             return
         full = "\n".join(parts).strip()
+        logger.info(f"[FLUSH] Full block text:\n{repr(full)}")
         if not full:
+            logger.info(f"[FLUSH] Full block vide, abandon")
             return
         stem, embedded = _embedded_from_merged_question_text(full)
+        logger.info(f"[FLUSH] Extrait - stem: {repr(stem)}, embedded count: {len(embedded)}")
         if len(embedded) < 2:
+            logger.info(f"[FLUSH] Pas assez d'options (<2), abandon")
             return
         correct = _correct_indices_from_rep_vs_options(embedded, current_rep)
+        logger.info(f"[FLUSH] Correct indices: {correct}")
         prompt = _normalize_stem_text(
             stem or _strip_question_number_prefix(full.splitlines()[0])[:500] or "Question"
         )
+        logger.info(f"[FLUSH] Prompt final: {repr(prompt)}")
         specs.append(_spec_with_number(prompt, embedded, correct, current_n))
 
-    for row in data_rows:
+    logger.info(f"[PARSE] Début de parse, {len(data_rows)} lignes de données")
+    for row_idx, row in enumerate(data_rows):
         while len(row) < width:
             row.append("")
         n_ord = _parse_ordre_from_row(row, i_o)
@@ -907,6 +920,8 @@ def _parse_oqr_multiline_blocks(
         if not row_cc:
             row_cc = _content_column_indices(i_o, i_r, width) or [i_q]
         chunk = _row_merged_content(row, row_cc)
+        
+        logger.info(f"[ROW {row_idx}] n_ord: {n_ord}, chunk: {repr(chunk)}")
         
         # Fallback : si le numéro n'est pas dans la colonne N°, il est peut-être 
         # fusionné au début de la colonne texte (ex: "12. Quel est...")
@@ -919,14 +934,18 @@ def _parse_oqr_multiline_blocks(
                     # en regardant s'il y a déjà un numéro en cours ou si c'est le début.
                     if current_n is None or potential_n == current_n + 1 or potential_n == 1:
                         n_ord = potential_n
+                        logger.info(f"[ROW {row_idx}] Numéro extrait du chunk: {n_ord}")
 
         if _valid_question_number(n_ord):
+            logger.info(f"[ROW {row_idx}] Nouveau numéro de question: {n_ord}")
             flush()
             current_n = n_ord
             current_rep = _rep_cell_from_row(row, i_r)
+            logger.info(f"[ROW {row_idx}] Réponse pour #{n_ord}: {repr(current_rep)}")
             # Si des lignes orphelines précèdent ce premier numéro, elles
             # font partie de cette question (début en bas de page précédente).
             if orphan_parts:
+                logger.info(f"[ROW {row_idx}] Ajout de {len(orphan_parts)} lignes orphelines")
                 # Le numéro de question est dans 'chunk', mais comme on prépend 
                 # des lignes, il se retrouverait au milieu de l'énoncé.
                 clean_chunk = _strip_question_number_prefix(chunk)
@@ -935,26 +954,14 @@ def _parse_oqr_multiline_blocks(
             else:
                 block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
-            # Désactivé temporairement : la logique de flush anticipé a pu couper la 60e question
-            # # Si on a déjà des options dans le bloc courant, et que cette nouvelle
-            # # ligne ressemble au début d'un nouvel énoncé, c'est probablement
-            # # la question suivante (orpheline).
-            # if (
-            #     _has_any_options_in_block(block_parts)
-            #     and _looks_like_new_question_start(chunk)
-            #     and not _looks_like_option_line(chunk)
-            #     and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE)
-            # ):
-            #     flush()
-            #     current_n = None
-            #     current_rep = ""
-            #     orphan_parts.append(chunk)
-            # else:
+            logger.info(f"[ROW {row_idx}] Ajout au bloc courant (#{current_n})")
             block_parts.append(chunk)
         elif current_n is None and chunk:
+            logger.info(f"[ROW {row_idx}] Ajout à orphan_parts")
             # Pas encore de numéro vu — garder pour la prochaine question
             orphan_parts.append(chunk)
     flush()
+    logger.info(f"[PARSE] Fin de parse, {len(specs)} questions créées")
     return specs
 
 
