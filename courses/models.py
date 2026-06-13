@@ -820,6 +820,9 @@ class SubscriptionRequest(models.Model):
         verbose_name = "demande d’abonnement"
         verbose_name_plural = "demandes d’abonnement"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status", "-decided_at"]),
+        ]
 
     def __str__(self):
         return f"{self.user} — {self.access_label()} — {self.plan} ({self.get_status_display()})"
@@ -1019,6 +1022,24 @@ def available_content_months(category: Category) -> list[tuple[int, int]]:
     return sorted(keys, reverse=True)
 
 
+def available_content_months_by_category(categories) -> dict[int, list[tuple[int, int]]]:
+    """Périodes (année, mois) pour lesquelles du contenu existe dans cette catégorie, groupées par ID de catégorie."""
+    from collections import defaultdict
+    category_keys = defaultdict(set)
+    for model in (MonthlyCourseContent, MonthlyCorrection, MonthlyExam):
+        for cat_id, year, month in model.objects.filter(category__in=categories).values_list("category_id", "year", "month").distinct():
+            category_keys[cat_id].add((year, month))
+            
+    today = timezone.localdate()
+    result = {}
+    for cat in categories:
+        keys = category_keys[cat.pk]
+        if not keys:
+            keys = { (today.year, today.month) }
+        result[cat.pk] = sorted(keys, reverse=True)
+    return result
+
+
 def _resolve_category_id(category) -> int:
     if isinstance(category, Category):
         return category.pk
@@ -1088,7 +1109,7 @@ def get_user_subscribed_months(user) -> list[dict]:
     # On met en cache si ce n'était pas préchargé
     if not (hasattr(user, "_prefetched_objects_cache") and "month_subscriptions" in user._prefetched_objects_cache):
         from django.core.cache import cache
-        cache.set(f"user_subscribed_months_{user.id}", data, 60)
+        cache.set(f"user_subscribed_months_{user.id}", data, 3600)
         
     return data
 

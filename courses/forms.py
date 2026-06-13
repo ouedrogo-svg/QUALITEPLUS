@@ -10,6 +10,7 @@ from .models import (
     SubscriptionPlan,
     SubscriptionRequest,
     available_content_months,
+    available_content_months_by_category,
     content_month_period_label,
     plan_covered_periods,
     request_period_for_plan,
@@ -115,11 +116,13 @@ class SubscriptionRequestForm(forms.ModelForm):
 
     def _build_content_choices(self) -> list[tuple[str, str]]:
         choices: list[tuple[str, str]] = []
-        categories = Category.objects.order_by("name")
+        categories = list(Category.objects.order_by("name"))
         if self.initial_category:
-            categories = categories.filter(pk=self.initial_category.pk)
+            categories = [cat for cat in categories if cat.pk == self.initial_category.pk]
+        
+        months_by_cat = available_content_months_by_category(categories)
         for cat in categories:
-            for year, month in available_content_months(cat):
+            for year, month in months_by_cat[cat.pk]:
                 label = f"{cat.name} — {content_month_period_label(year, month)}"
                 choices.append((self._choice_key(cat.pk, year, month), label))
         return choices

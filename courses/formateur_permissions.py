@@ -72,6 +72,8 @@ def formateur_category_ids(user, *, assigned_only: bool = False) -> set[int] | N
     profile = _profile(user)
     if not profile:
         return set()
+    if hasattr(profile, "_prefetched_objects_cache") and "categories" in profile._prefetched_objects_cache:
+        return {c.pk for c in profile.categories.all()}
     return set(profile.categories.values_list("pk", flat=True))
 
 

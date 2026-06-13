@@ -10,3 +10,7 @@ class CoursesConfig(AppConfig):
         from .sqlite import register_sqlite_pragmas
 
         register_sqlite_pragmas()
+        
+        # Connect signals
+        import courses.signals
+

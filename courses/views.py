@@ -196,32 +196,32 @@ def _category_month_periods(category: Category) -> list[dict]:
         }
     )
 
-    for c in MonthlyCourseContent.objects.filter(category=category).only("year", "month"):
-        p = periods[(c.year, c.month)]
-        p["year"] = c.year
-        p["month"] = c.month
+    for c in MonthlyCourseContent.objects.filter(category=category).values("year", "month"):
+        p = periods[(c["year"], c["month"])]
+        p["year"] = c["year"]
+        p["month"] = c["month"]
         p["n_courses"] += 1
 
     corrections = MonthlyCorrection.objects.filter(category=category).annotate(
         nq=Count("quiz__questions", distinct=True)
-    )
+    ).values("year", "month", "nq")
     for corr in corrections:
-        p = periods[(corr.year, corr.month)]
-        p["year"] = corr.year
-        p["month"] = corr.month
+        p = periods[(corr["year"], corr["month"])]
+        p["year"] = corr["year"]
+        p["month"] = corr["month"]
         p["n_corrections"] += 1
-        if corr.nq > 0:
+        if corr["nq"] > 0:
             p["has_quiz"] = True
 
     exams = MonthlyExam.objects.filter(category=category).annotate(
         nq=Count("quiz__questions", distinct=True)
-    )
+    ).values("year", "month", "nq")
     for exam in exams:
-        p = periods[(exam.year, exam.month)]
-        p["year"] = exam.year
-        p["month"] = exam.month
+        p = periods[(exam["year"], exam["month"])]
+        p["year"] = exam["year"]
+        p["month"] = exam["month"]
         p["n_exams"] += 1
-        if exam.nq > 0:
+        if exam["nq"] > 0:
             p["has_quiz"] = True
 
     out: list[dict] = []

@@ -476,7 +476,7 @@ class ExamQuizAttemptAdmin(admin.ModelAdmin):
         "submitted_at",
     )
     list_filter = ("sent_to_admin", "exam__category", "exam__year", "exam__month", "exam")
-    list_select_related = ("user", "exam")
+    list_select_related = ("user", "exam", "exam__category")
     search_fields = ("user__last_name", "user__first_name", "user__username")
     readonly_fields = (
         "user",
@@ -515,6 +515,7 @@ class ExamQuizQuestionAdmin(admin.ModelAdmin):
     list_filter = ("exam_quiz__exam__category", "exam_quiz__exam__year")
     search_fields = ("prompt",)
     ordering = ("exam_quiz", "order", "id")
+    list_select_related = ("exam_quiz", "exam_quiz__exam", "exam_quiz__exam__category")
     raw_id_fields = ("exam_quiz",)
     inlines = [ExamQuizOptionInline]
 
@@ -535,6 +536,7 @@ class QuizQuestionAdmin(admin.ModelAdmin):
     list_filter = ("quiz__correction__category", "quiz__correction__year")
     search_fields = ("prompt",)
     ordering = ("quiz", "order", "id")
+    list_select_related = ("quiz", "quiz__correction", "quiz__correction__category")
     raw_id_fields = ("quiz",)
     inlines = [QuizOptionInline]
 

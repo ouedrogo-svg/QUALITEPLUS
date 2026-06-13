@@ -3,24 +3,84 @@
 {% block title %}{{ title }} — Espace formateur{% endblock %}
 {% block formateur_content %}
 <h1>{{ title }}</h1>
-{% if obj %}
-<p class="text-muted">
-  Quiz régénéré depuis le PDF après enregistrement.
-  <a href="{% formateur_url 'exam_results_export' obj.pk %}">Exporter les résultats (Excel)</a>
-</p>
-{% endif %}
 <form method="post" enctype="multipart/form-data" class="stack-form narrow">
   {% csrf_token %}
   {{ form.non_field_errors }}
-  {% for field in form %}
+
+  <fieldset class="plan-fieldset">
+    <legend>Informations de l'examen</legend>
+    <p class="help" style="margin-top:0">
+      Téléversez l'examen en PDF. Définissez la durée du quiz et la période pendant laquelle
+      la <strong>première</strong> composition de chaque candidat est transmise au récapitulatif
+      (les reprises restent visibles pour le candidat seulement).
+    </p>
     <div class="form-group">
-      {{ field.label_tag }}
-      {{ field }}
-      {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
-      {{ field.errors }}
+      {{ form.category.label_tag }}
+      {{ form.category }}
+      {% if form.category.help_text %}<p class="help">{{ form.category.help_text }}</p>{% endif %}
+      {{ form.category.errors }}
     </div>
-  {% endfor %}
-  <button type="submit" class="btn btn-primary">Enregistrer</button>
-  <a class="btn btn-ghost" href="{% formateur_url 'exam_list' %}">Annuler</a>
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        {{ form.year.label_tag }}
+        {{ form.year }}
+        {{ form.year.errors }}
+      </div>
+      <div>
+        {{ form.month.label_tag }}
+        {{ form.month }}
+        {{ form.month.errors }}
+      </div>
+    </div>
+    <div class="form-group">
+      {{ form.title.label_tag }}
+      {{ form.title }}
+      <p class="help">Optionnel : titre affiché pour distinguer plusieurs examens sur le même mois.</p>
+      {{ form.title.errors }}
+    </div>
+  </fieldset>
+
+  <fieldset class="plan-fieldset">
+    <legend>Fichier PDF (examen)</legend>
+    <p class="help" style="margin-top:0">
+      Le quiz sera construit à partir des tableaux présents dans ce PDF.
+    </p>
+    <div class="form-group">
+      {{ form.pdf.label_tag }}
+      {{ form.pdf }}
+      {% if obj and obj.pdf %}<p class="help">Fichier actuel : {{ obj.pdf.name|truncatechars:50 }}</p>{% endif %}
+      {{ form.pdf.errors }}
+    </div>
+  </fieldset>
+
+  <fieldset class="plan-fieldset">
+    <legend>Paramètres du quiz</legend>
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        {{ form.duration_minutes.label_tag }}
+        {{ form.duration_minutes }}
+        <p class="help">Temps imparti au candidat (chronomètre affiché pendant l'épreuve).</p>
+        {{ form.duration_minutes.errors }}
+      </div>
+      <div>
+        {{ form.results_collection_days.label_tag }}
+        {{ form.results_collection_days }}
+        <p class="help">Nombre de jours pour collecter les premières compositions.</p>
+        {{ form.results_collection_days.errors }}
+      </div>
+    </div>
+  </fieldset>
+
+  {% if obj %}
+  <div class="alert alert-info" style="margin-top:1rem">
+    Après enregistrement, le quiz est régénéré automatiquement à partir du PDF.
+    <a href="{% formateur_url 'exam_results_export' obj.pk %}" style="margin-left:0.5rem">Exporter les résultats (Excel)</a>
+  </div>
+  {% endif %}
+
+  <div style="display:flex;gap:0.75rem;margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a class="btn btn-ghost" href="{% formateur_url 'exam_list' %}">Annuler</a>
+  </div>
 </form>
 {% endblock %}

@@ -6,15 +6,52 @@
 <form method="post" enctype="multipart/form-data" class="stack-form narrow">
   {% csrf_token %}
   {{ form.non_field_errors }}
-  {% for field in form %}
+
+  <fieldset class="plan-fieldset">
+    <legend>Informations du sujet</legend>
+    <p class="help" style="margin-top:0">
+      Ajoutez autant de PDF que nécessaire pour la même catégorie et le même mois
+      (par ex. plusieurs supports). Indiquez un titre affiché pour les distinguer.
+    </p>
     <div class="form-group">
-      {{ field.label_tag }}
-      {{ field }}
-      {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
-      {{ field.errors }}
+      {{ form.category.label_tag }}
+      {{ form.category }}
+      {% if form.category.help_text %}<p class="help">{{ form.category.help_text }}</p>{% endif %}
+      {{ form.category.errors }}
     </div>
-  {% endfor %}
-  <button type="submit" class="btn btn-primary">Enregistrer</button>
-  <a class="btn btn-ghost" href="{% formateur_url 'monthly_content_list' %}">Annuler</a>
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        {{ form.year.label_tag }}
+        {{ form.year }}
+        {{ form.year.errors }}
+      </div>
+      <div>
+        {{ form.month.label_tag }}
+        {{ form.month }}
+        {{ form.month.errors }}
+      </div>
+    </div>
+    <div class="form-group">
+      {{ form.title.label_tag }}
+      {{ form.title }}
+      <p class="help">Optionnel : titre affiché pour distinguer plusieurs sujets sur le même mois.</p>
+      {{ form.title.errors }}
+    </div>
+  </fieldset>
+
+  <fieldset class="plan-fieldset">
+    <legend>Fichier PDF</legend>
+    <div class="form-group">
+      {{ form.pdf.label_tag }}
+      {{ form.pdf }}
+      {% if obj and obj.pdf %}<p class="help">Fichier actuel : {{ obj.pdf.name|truncatechars:50 }}</p>{% endif %}
+      {{ form.pdf.errors }}
+    </div>
+  </fieldset>
+
+  <div style="display:flex;gap:0.75rem;margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a class="btn btn-ghost" href="{% formateur_url 'monthly_content_list' %}">Annuler</a>
+  </div>
 </form>
 {% endblock %}

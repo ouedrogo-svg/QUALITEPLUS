@@ -3,23 +3,67 @@
 {% block title %}{{ title }} — Espace formateur{% endblock %}
 {% block formateur_content %}
 <h1>{{ title }}</h1>
-{% if obj %}
-<p class="text-muted">Après enregistrement, le quiz est régénéré automatiquement à partir du PDF.</p>
-{% else %}
-<p class="text-muted">Le quiz interactif sera généré à partir du PDF (sans limite de temps).</p>
-{% endif %}
 <form method="post" enctype="multipart/form-data" class="stack-form narrow">
   {% csrf_token %}
   {{ form.non_field_errors }}
-  {% for field in form %}
+
+  <fieldset class="plan-fieldset">
+    <legend>Informations de la correction</legend>
+    <p class="help" style="margin-top:0">
+      Téléversez le corrigé en PDF. Le quiz interactif (sans limite de temps) est généré
+      automatiquement à partir des <strong>tableaux</strong> présents dans ce PDF.<br>
+      Formats reconnus : tableau QCM classique (question + propositions + réponses),
+      ou <strong>3 colonnes</strong> « N° d'ordre », « Questions », « Réponses ».
+    </p>
     <div class="form-group">
-      {{ field.label_tag }}
-      {{ field }}
-      {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
-      {{ field.errors }}
+      {{ form.category.label_tag }}
+      {{ form.category }}
+      {% if form.category.help_text %}<p class="help">{{ form.category.help_text }}</p>{% endif %}
+      {{ form.category.errors }}
     </div>
-  {% endfor %}
-  <button type="submit" class="btn btn-primary">Enregistrer</button>
-  <a class="btn btn-ghost" href="{% formateur_url 'correction_list' %}">Annuler</a>
+    <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      <div>
+        {{ form.year.label_tag }}
+        {{ form.year }}
+        {{ form.year.errors }}
+      </div>
+      <div>
+        {{ form.month.label_tag }}
+        {{ form.month }}
+        {{ form.month.errors }}
+      </div>
+    </div>
+    <div class="form-group">
+      {{ form.title.label_tag }}
+      {{ form.title }}
+      <p class="help">Optionnel : titre affiché pour distinguer plusieurs corrections sur le même mois.</p>
+      {{ form.title.errors }}
+    </div>
+  </fieldset>
+
+  <fieldset class="plan-fieldset">
+    <legend>Fichier PDF (correction)</legend>
+    <p class="help" style="margin-top:0">
+      Le quiz sera construit à partir de ce fichier. Si aucun tableau n'est détecté,
+      le quiz restera vide.
+    </p>
+    <div class="form-group">
+      {{ form.pdf.label_tag }}
+      {{ form.pdf }}
+      {% if obj and obj.pdf %}<p class="help">Fichier actuel : {{ obj.pdf.name|truncatechars:50 }}</p>{% endif %}
+      {{ form.pdf.errors }}
+    </div>
+  </fieldset>
+
+  {% if obj %}
+  <div class="alert alert-info" style="margin-top:1rem">
+    Après enregistrement, le quiz est régénéré automatiquement à partir du PDF (quelques secondes).
+  </div>
+  {% endif %}
+
+  <div style="display:flex;gap:0.75rem;margin-top:1.5rem">
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <a class="btn btn-ghost" href="{% formateur_url 'correction_list' %}">Annuler</a>
+  </div>
 </form>
 {% endblock %}

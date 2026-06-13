@@ -16,6 +16,7 @@ from .quiz_import import (
     _enrich_spec_with_continuation,
     _finalize_quiz_specs,
     _first_ordre_row_index,
+    _looks_like_option_line,
     _normalize_matrix_rows,
     _parse_ordre_cell,
     _parse_ordre_from_row,
@@ -457,25 +458,40 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                     # Essai 1 : enrichir la question précédente (cas classique)
                     prev_n = first_ordre_n - 1
                     if _valid_question_number(prev_n) and prev_n in by_number:
-                        enriched = _enrich_spec_with_continuation(
-                            by_number[prev_n], lead_parts
+                        prev_prompt = (by_number[prev_n].get("prompt") or "").strip()
+                        prev_complete = (
+                            len(by_number[prev_n].get("texts") or []) >= 4
+                            and len(prev_prompt) >= 25
+                            and (prev_prompt.endswith("?") or prev_prompt.endswith(":"))
                         )
-                        if (
-                            _spec_is_plausible(enriched)
-                            and _spec_richness(enriched) > _spec_richness(by_number[prev_n])
-                        ):
-                            logger.info(f"Enrichissant question #{prev_n} avec {len(lead_parts)} lignes")
-                            by_number[prev_n] = enriched
-                            applied = True
+                        if not prev_complete:
+                            enriched = _enrich_spec_with_continuation(
+                                by_number[prev_n], lead_parts
+                            )
+                            if (
+                                _spec_is_plausible(enriched)
+                                and _spec_richness(enriched) > _spec_richness(by_number[prev_n])
+                            ):
+                                logger.info(f"Enrichissant question #{prev_n} avec {len(lead_parts)} lignes")
+                                by_number[prev_n] = enriched
+                                applied = True
                     # Essai 2 : prépendre au contenu de la question courante
                     # (le contenu commence en bas de la page précédente, le N° est ici)
                     if not applied and first_ordre_n in by_number:
-                        enriched = _enrich_spec_with_continuation(
-                            by_number[first_ordre_n], lead_parts, prepend=True
+                        current_prompt = (by_number[first_ordre_n].get("prompt") or "").strip()
+                        current_needs_prefix = (
+                            not current_prompt
+                            or current_prompt == "Question"
+                            or len(current_prompt) < 25
+                            or _looks_like_option_line(current_prompt)
                         )
-                        if _spec_richness(enriched) > _spec_richness(by_number[first_ordre_n]):
-                            logger.info(f"Enrichissant (préfixe) question #{first_ordre_n} avec {len(lead_parts)} lignes")
-                            by_number[first_ordre_n] = enriched
+                        if current_needs_prefix:
+                            enriched = _enrich_spec_with_continuation(
+                                by_number[first_ordre_n], lead_parts, prepend=True
+                            )
+                            if _spec_richness(enriched) > _spec_richness(by_number[first_ordre_n]):
+                                logger.info(f"Enrichissant (préfixe) question #{first_ordre_n} avec {len(lead_parts)} lignes")
+                                by_number[first_ordre_n] = enriched
                     elif not applied and first_ordre_n not in by_number:
                         # La question n'existe pas encore — on la créera plus tard
                         # avec le tableau complet ; on injecte les lignes de tête

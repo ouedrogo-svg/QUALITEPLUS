@@ -29,6 +29,7 @@ class PrefetchUserSubscriptionMiddleware:
                     'profile', 
                     'profile__candidate_category'
                 ).prefetch_related(
+                    'profile__categories',
                     Prefetch(
                         'month_subscriptions',
                         queryset=UserSubscription.objects.select_related('category', 'plan').order_by('-year', '-month', 'category__name')
@@ -37,7 +38,7 @@ class PrefetchUserSubscriptionMiddleware:
                 optimized_user = user_qs.first()
                 if optimized_user:
                     request.user = optimized_user
-                    # Mise en cache pour 1 minute pour fluidifier la navigation.
-                    cache.set(cache_key, optimized_user, 60)
+                    # Mise en cache pour 1 heure (invalidation gérée par signaux).
+                    cache.set(cache_key, optimized_user, 3600)
                 
         return self.get_response(request)

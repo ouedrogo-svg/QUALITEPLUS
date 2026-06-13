@@ -15,8 +15,8 @@ QUIZ_QUESTION_NUMBER_DEFAULT = 60
 QUIZ_QUESTION_NUMBER_ABSOLUTE_MAX = 300
 # Rétrocompatibilité (barème par défaut quand le quiz est vide).
 QUIZ_QUESTION_NUMBER_MAX = QUIZ_QUESTION_NUMBER_DEFAULT
-# QCM : nombre de propositions variable (pas de limite stricte).
-QUIZ_MAX_OPTIONS = 20
+# QCM : nombre de propositions variable (max 4 comme dans le PDF)
+QUIZ_MAX_OPTIONS = 4
 
 
 def _valid_question_number(n: int | None) -> bool:
@@ -135,7 +135,7 @@ def _strip_question_number_prefix(text: str) -> str:
 
 
 _OPTION_LETTER_MARK = re.compile(
-    r"(?:^|\n)\s*([A-Za-z])\s*[\)\.]\s*\t?\s*",
+    r"(?:^|\n)\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\)\.\-\u2013:、])\s*\t?\s*",
     re.MULTILINE,
 )
 _ANSWER_KEY_ONLY_RE = re.compile(
@@ -143,7 +143,7 @@ _ANSWER_KEY_ONLY_RE = re.compile(
     re.IGNORECASE,
 )
 _FALSE_OPTION_LINE_RE = re.compile(
-    r"^[A-Za-z]\s*[\)\.]\s*(?:[A-Z]{2,20}|[A-Z](?:\s*[,;+\/|]\s*[A-Z])+)\s*$",
+    r"^[A-Za-z]\s*[\)\.\-\u2013:、]\s*(?:[A-Z]{2,20}|[A-Z](?:\s*[,;+\/|]\s*[A-Z])+)\s*$",
     re.IGNORECASE,
 )
 
@@ -151,18 +151,85 @@ _FALSE_OPTION_LINE_RE = re.compile(
 def _normalize_stem_text(stem: str) -> str:
     """Énoncé sur plusieurs lignes PDF → une seule phrase (comme dans le corrigé)."""
     t = (stem or "").strip()
-    if not t or "\n" not in t:
+    if not t:
+        return t
+    # Retirer les références NB d'abord
+    t = strip_nb_references(t)
+    if "\n" not in t:
         return t
     return re.sub(r"\s*\n\s*", " ", t).strip()
 
 
 def _strip_option_letter_prefix(text: str) -> str:
-    """Retire « A) » ou « A. » en tête si déjà présent dans le texte extrait."""
-    return re.sub(r"^[A-Za-z]\s*[\)\.]\s*", "", (text or "").strip()).strip()
+    """Retire « A) », « A. », « A- », « A– », « A: », « (A) », « A » (lettre seule) en tête."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    
+    # Normaliser les espaces
+    original = t
+    
+    # (A), (B), (a), (b) — lettre entre parenthèses
+    t = re.sub(r"^\([A-Za-z]\)\s*", "", t)
+    if t != original:
+        return t.strip()
+    
+    # A), A., A-, A–, A:, A、 avec espace optionnel
+    t = re.sub(r"^[A-Za-z]\s*[\)\.\-\u2013:、]\s*", "", original)
+    if t != original:
+        return t.strip()
+    
+    # Format: lettre seule suivie d'espace puis texte (ex: "A Le principe...")
+    # Vérifier que la première "lettre" est bien isolée
+    match = re.match(r"^([A-Za-z])\s+(.+)$", original)
+    if match:
+        letter, rest = match.groups()
+        # Vérifier que ce qui suit ressemble à du texte (pas juste une autre lettre)
+        if len(rest) > 2 and not re.match(r"^[A-Za-z]\s*$", rest):
+            return rest.strip()
+    
+    # Format numérique: 1), 1., 1-, etc.
+    t = re.sub(r"^[0-9]+\s*[\)\.\-\u2013:]\s*", "", original)
+    if t != original:
+        return t.strip()
+    
+    return original
 
 
 def _normalize_option_dedup_key(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _clean_prompt_text(prompt: str) -> str:
+    t = _normalize_stem_text(_clean_fragmented_text(strip_nb_references(prompt or "")))
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return ""
+    if re.match(r"^[A-D]\s*[\)\.\-\u2013:]\s*", t, flags=re.IGNORECASE):
+        rest = re.sub(
+            r"^[A-D]\s*[\)\.\-\u2013:]\s*[^.!?]*[.!?]\s*",
+            "",
+            t,
+            count=1,
+            flags=re.IGNORECASE,
+        ).strip()
+        if rest:
+            t = rest
+    marker = re.search(r"\s+[A-D]\s*[\)\.\-\u2013:]\s+", t, flags=re.IGNORECASE)
+    if marker:
+        t = t[: marker.start()].strip()
+    next_question = re.search(
+        r"(\?)\s+(?=(?:Quels?|Quelle?s?|Qui|Que|Comment|Pourquoi|Quand|Le|La|Les|L['’]))",
+        t,
+        flags=re.IGNORECASE,
+    )
+    if next_question:
+        t = t[: next_question.end(1)].strip()
+    elif "?" in t:
+        after_question = re.search(r"\?\s+\S", t)
+        if after_question:
+            t = t[: after_question.start() + 1].strip()
+    return t
 
 
 def _clean_option_text_fragment(text: str) -> str:
@@ -185,6 +252,8 @@ def _looks_like_answer_key_not_option(text: str) -> bool:
         return True
     # Proposition réelle (mots en minuscules : « A et B », « A prix ferme », etc.)
     if re.search(r"[a-zàâäéèêëïîôùûüçœ]{2,}", t):
+        return False
+    if "'" in t or "’" in t:
         return False
     compact = re.sub(r"\s+", "", t.upper())
     if len(compact) == 1 and "A" <= compact <= "Z":
@@ -224,9 +293,133 @@ def _sanitize_spec_options(texts: list[str], correct: list[int]) -> tuple[list[s
 def _sanitize_question_spec_dict(spec: dict) -> dict:
     texts, correct = _sanitize_spec_options(spec.get("texts") or [], spec.get("correct") or [])
     out = dict(spec)
+    out["prompt"] = _clean_prompt_text(out.get("prompt") or "")
     out["texts"] = texts
     out["correct"] = correct
     return out
+
+
+# Dictionnaire des fragments de mots connus (mot coupé -> mot complet)
+_WORD_FRAGMENTS = {
+    'ministè re': 'ministère',
+    'ministè res': 'ministères',
+    'économi que': 'économique',
+    'économi ques': 'économiques',
+    'répo rdre': 'réponse',
+    'répo rdres': 'réponses',
+    'publi que': 'publique',
+    'publi ques': 'publiques',
+    'prépa ration': 'préparation',
+    'administra tif': 'administratif',
+    'administra tion': 'administration',
+    'autorisa tion': 'autorisation',
+    'program me': 'programme',
+    'gesti on': 'gestion',
+    'opera tion': 'opération',
+    'exécu tion': 'exécution',
+    'propo sition': 'proposition',
+    'liquida tion': 'liquidation',
+    'dépen se': 'dépense',
+    'finan cier': 'financier',
+    'dével oppement': 'développement',
+    'informa tion': 'information',
+    'popula tion': 'population',
+    'région ale': 'régionale',
+    'natio nale': 'nationale',
+    'ordonna teur': 'ordonnateur',
+    'comptable matière': 'comptable matière',  # Pas de changement mais valide
+}
+
+# En-têtes de table à filtrer
+_HEADER_PATTERNS = [
+    r'^Cont\s+Pr[eéè]p',
+    r'^Adj\s+Cons',
+    r'r[eéè]po\s+rdre',
+    r'^rdre\s+Questions',
+    r'^NB\s*:\s*page\s*\d+',
+]
+
+def _fix_word_fragments(text: str) -> str:
+    """Corrige les mots coupés avec espace inséré."""
+    for fragment, correction in _WORD_FRAGMENTS.items():
+        text = text.replace(fragment, correction)
+        # Essayer aussi avec des variantes de casse
+        text = text.replace(fragment.capitalize(), correction.capitalize())
+        text = text.replace(fragment.upper(), correction.upper())
+    return text
+
+def _is_header_line(line: str) -> bool:
+    """Détecte si une ligne est un en-tête de table à ignorer."""
+    line = line.strip()
+    if not line:
+        return False
+    for pattern in _HEADER_PATTERNS:
+        if re.search(pattern, line, re.IGNORECASE):
+            return True
+    return False
+
+def _clean_fragmented_text(text: str) -> str:
+    """
+    Nettoie le texte PDF fragmenté pour tableau 3 colonnes (Ordre | Question | Réponse).
+    Pipeline: 1) Filtrer en-têtes, 2) Corriger fragments, 3) Fusionner lignes coupées.
+    """
+    if not text:
+        return text
+    
+    # Étape 1: Filtrer les en-têtes et lignes vides
+    lines = text.split('\n')
+    filtered = []
+    for line in lines:
+        line = line.strip()
+        if line and not _is_header_line(line):
+            filtered.append(line)
+    
+    if not filtered:
+        return ""
+    
+    # Étape 2: Corriger les fragments avec espaces insérés
+    text = '\n'.join(filtered)
+    text = _fix_word_fragments(text)
+    
+    # Étape 3: Fusionner les lignes qui semblent être des fragments
+    # ex: "crédits de pa" + "iement" -> "crédits de paiement"
+    lines = text.split('\n')
+    merged = []
+    pending = ""
+    
+    for line in lines:
+        if not pending:
+            pending = line
+            continue
+        
+        # Si pending se termine par des lettres et line commence par minuscule
+        if pending[-1].isalpha() and line[0].islower():
+            # Vérifier si la fusion crée un mot connu
+            pending_last = pending.split()[-1]
+            line_first = line.split()[0] if line else ""
+            combined = (pending_last + line_first).lower()
+            
+            valid_combos = [
+                'paiement', 'programme', 'ministère', 'autorisation',
+                'économique', 'réponse', 'publique', 'préparation',
+                'administration', 'gestion', 'opération', 'exécution',
+                'proposition', 'liquidation', 'dépense', 'engagement',
+                'investissement', 'financier', 'ordonnateur', 'programmes',
+            ]
+            
+            if combined in valid_combos:
+                # Fusionner sans espace
+                pending = pending + line
+                continue
+        
+        # Sinon, sauvegarder pending
+        merged.append(pending)
+        pending = line
+    
+    if pending:
+        merged.append(pending)
+    
+    return '\n'.join(merged)
 
 
 def strip_nb_references(text: str) -> str:
@@ -234,6 +427,8 @@ def strip_nb_references(text: str) -> str:
     t = (text or "").strip()
     if not t:
         return ""
+    # D'abord nettoyer les fragments
+    t = _clean_fragmented_text(t)
     lines = [
         ln
         for ln in t.splitlines()
@@ -245,12 +440,15 @@ def strip_nb_references(text: str) -> str:
 
 
 def _normalize_option_texts(texts: list[str]) -> list[str]:
-    """Nettoie les propositions (sans ligne NB)."""
+    """Nettoie les propositions (sans ligne NB) et fusionne les lignes multi-lignes."""
     out: list[str] = []
     for raw in texts:
         t = strip_nb_references(_strip_option_letter_prefix(raw))
         if t:
-            out.append(t)
+            # Fusionner les retours à la ligne en espaces pour les options multi-lignes
+            t = re.sub(r"\s*\n+\s*", " ", t).strip()
+            if t:
+                out.append(t)
     return out
 
 
@@ -266,23 +464,23 @@ def _split_stem_and_embedded_options(full_question: str) -> tuple[str, list[str]
     matches = list(marks.finditer(full))
     if len(matches) < 2:
         marks = re.compile(
-            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*([A-Za-z])\s*[\.\)\:、\-–]\s*",
+            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\.\)\:、\-–])\s*",
             re.MULTILINE,
         )
         matches = list(marks.finditer(full))
     if len(matches) < 2:
         return full, []
     matches = matches[:QUIZ_MAX_OPTIONS]
-    stem = full[: matches[0].start(1)].strip()
+    stem = full[: matches[0].start()].strip()
     texts: list[str] = []
     for k, m in enumerate(matches):
         start = m.end()
-        end = matches[k + 1].start(1) if k + 1 < len(matches) else len(full)
+        end = matches[k + 1].start() if k + 1 < len(matches) else len(full)
         chunk = full[start:end].strip()
         if chunk:
             texts.append(_strip_option_letter_prefix(chunk))
     if not stem:
-        stem = _strip_question_number_prefix(full[: matches[0].start(1)].strip())
+        stem = _strip_question_number_prefix(full[: matches[0].start()].strip())
     return _normalize_stem_text(stem), _normalize_option_texts(texts)
 
 
@@ -556,8 +754,15 @@ def _spec_is_plausible(spec: dict) -> bool:
     return 2 <= n_opts <= QUIZ_MAX_OPTIONS and bool((spec.get("prompt") or "").strip())
 
 
-def _spec_richness(spec: dict) -> tuple[int, int]:
-    return (len(spec.get("texts") or []), len(spec.get("prompt") or ""))
+def _spec_richness(spec: dict) -> tuple[int, int, int, int]:
+    """Score pour comparer deux specs : priorité à la présence de réponses correctes,
+    puis nombre d'options raisonnable (2-4), puis longueur de l'énoncé."""
+    n_opts = len(spec.get("texts") or [])
+    has_correct = 1 if spec.get("correct") else 0
+    # Pénaliser les specs avec trop d'options (> 4 est suspect pour un QCM)
+    opts_score = n_opts if n_opts <= 4 else 4 - (n_opts - 4)
+    prompt_len = len(spec.get("prompt") or "")
+    return (has_correct, opts_score, prompt_len, n_opts)
 
 
 def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str], *, prepend: bool = False) -> dict:
@@ -756,6 +961,21 @@ def _row_merged_content(row: list[str], col_indices: list[int]) -> str:
     return "\n".join(parts)
 
 
+def _explicit_option_column_indices(header: list[str], i_q: int, i_r: int) -> list[int]:
+    cols: list[int] = []
+    expected = "abcd"
+    for j in range(i_q + 1, i_r):
+        h = re.sub(r"[^a-z]", "", _norm_header(header[j] if j < len(header) else ""))
+        if len(h) == 1 and h in expected:
+            cols.append(j)
+    if len(cols) >= 2 and "".join(
+        re.sub(r"[^a-z]", "", _norm_header(header[j] if j < len(header) else ""))
+        for j in cols[:QUIZ_MAX_OPTIONS]
+    ).startswith(expected[: len(cols[:QUIZ_MAX_OPTIONS])]):
+        return cols[:QUIZ_MAX_OPTIONS]
+    return []
+
+
 def _is_false_option_line(text: str) -> bool:
     """Ligne type « D) ABC » : clé de correction PDF, pas une proposition."""
     t = (text or "").strip()
@@ -785,19 +1005,138 @@ def _dedupe_and_clean_block_parts(parts: list[str]) -> list[str]:
     return _merge_split_option_parts(out)
 
 
+def _orphan_parts_safe_for_next_question(parts: list[str], *, has_response: bool = False) -> list[str]:
+    safe: list[str] = []
+    for raw in parts:
+        p = (raw or "").strip()
+        if not p:
+            continue
+        if re.match(r"^\s*NB\s*:", p, flags=re.IGNORECASE):
+            continue
+        if not has_response and (_looks_like_option_line(p) or _OPTION_LETTER_MARK.search(p)):
+            continue
+        safe.append(p)
+    return safe
+
+
+def _block_has_complete_options(parts: list[str]) -> bool:
+    text = "\n".join(p for p in parts if p)
+    letters: set[str] = set()
+    for m in _OPTION_LETTER_MARK.finditer(text):
+        letter = (m.group(1) or m.group(2) or "").upper()
+        if letter in {"A", "B", "C", "D"}:
+            letters.add(letter)
+    return len(letters) >= QUIZ_MAX_OPTIONS
+
+
+def _option_line_looks_incomplete(line: str) -> bool:
+    """Détecte si une ligne d'option semble incomplète (troncature)."""
+    # Retirer le préfixe A), B), etc.
+    content = _strip_option_letter_prefix(line).strip()
+    if not content:
+        return True
+    if "'" in content or "’" in content:
+        return False
+    if re.search(r"\b[A-Z]{3,}\b", content):
+        return False
+    
+    # Si ça se termine par une ponctuation forte, c'est probablement complet
+    if re.search(r"[.!?;:…]$", content):
+        return False
+    
+    # Si c'est très court (moins de 12 caractères) et sans ponctuation, probablement incomplet
+    if len(content) < 12:
+        return True
+    
+    # Si le dernier mot est très court (moins de 4 lettres) et sans ponctuation
+    words = content.split()
+    if words:
+        last_word = words[-1]
+        # Mot court sans ponctuation = probablement un fragment
+        if len(last_word) < 4 and not re.search(r"[.!?;:…]$", last_word):
+            return True
+        # Mot qui finit par une consonne et une seule voyelle = probablement incomplet
+        # (ex: "no", "sim", "op", "exc")
+        if len(last_word) <= 3 and last_word.isalpha():
+            vowels = sum(1 for c in last_word.lower() if c in 'aeiouyéèêëïîôùûü')
+            if vowels <= 1:
+                return True
+    
+    return False
+
+
 def _merge_split_option_parts(parts: list[str]) -> list[str]:
     """Fusionne les lignes de suite (ex. « disposition » après « A) … leur »)."""
     out: list[str] = []
+    pending_option: str | None = None
+    
     for p in parts:
         p = p.strip()
         if not p:
             continue
-        if out and not re.match(r"^[A-Za-z]\s*[\)\.]", p) and not re.match(r"^[1-9][0-9]?\s*[\)\.]", p):
-            prev = out[-1]
-            if not re.search(r"[.!?;:]\s*$", prev):
-                out[-1] = f"{prev}\n{p}"
+        
+        # Vérifier si c'est une nouvelle option (commence par lettre+nombre+ponctuation)
+        is_new_option = (
+            re.match(r"^[A-Za-z]\s*[\)\.\-\u2013:、]", p) or  # A), B., C-, etc.
+            re.match(r"^\([A-Za-z]\)", p) or  # (A), (B)
+            re.match(r"^[1-9][0-9]?\s*[\)\.\-\u2013:、]", p)  # 1), 2., etc.
+        )
+        
+        # Si on a une option en attente qui semble incomplète
+        if pending_option:
+            if is_new_option:
+                # La ligne courante est une nouvelle option
+                # Vérifier si l'option en attente est vraiment incomplète
+                if _option_line_looks_incomplete(pending_option):
+                    # Essayer de fusionner avec la nouvelle option si elle commence par une minuscule
+                    # (ex: "A) Procédure no" + "rmale." -> "A) Procédure normale.")
+                    new_content = _strip_option_letter_prefix(p).strip()
+                    if new_content and new_content[0].islower():
+                        # Fusionner l'ancien préfixe avec le nouveau contenu combiné
+                        old_prefix = re.match(r"^([A-Za-z]\s*[\)\.\-\u2013:、]|\([A-Za-z]\))", pending_option)
+                        if old_prefix:
+                            merged = f"{old_prefix.group(1)} {_strip_option_letter_prefix(pending_option).strip()}{new_content}"
+                            pending_option = merged
+                        else:
+                            out.append(pending_option)
+                    else:
+                        out.append(pending_option)
+                else:
+                    out.append(pending_option)
+                pending_option = None
+            else:
+                # La ligne courante n'est pas une option, fusionner
+                merged_content = f"{_strip_option_letter_prefix(pending_option).strip()}\n{p}"
+                old_prefix = re.match(r"^([A-Za-z]\s*[\)\.\-\u2013:、]|\([A-Za-z]\))", pending_option)
+                if old_prefix:
+                    pending_option = f"{old_prefix.group(1)} {merged_content}"
+                else:
+                    out.append(pending_option)
+                    pending_option = p
                 continue
-        out.append(p)
+        
+        if out and not is_new_option:
+            prev = out[-1]
+            # Fusionner si la ligne précédente ne se termine pas par une ponctuation forte
+            prev_ends_strong = re.search(r"[.!?;:…]\s*$", prev)
+            current_is_continuation = len(p) < 40 and not re.search(r"[.!?;:…]$", p)
+            
+            if not prev_ends_strong or current_is_continuation:
+                # Vérifier que ce n'est pas une nouvelle question
+                if not _looks_like_new_question_start(p):
+                    out[-1] = f"{prev}\n{p}"
+                    continue
+        
+        # Si c'est une option qui semble incomplète, la mettre en attente
+        if is_new_option and _option_line_looks_incomplete(p):
+            pending_option = p
+        else:
+            out.append(p)
+    
+    # Ne pas oublier la dernière option en attente
+    if pending_option:
+        out.append(pending_option)
+    
     return out
 
 
@@ -811,53 +1150,114 @@ def _embedded_from_merged_question_text(full: str) -> tuple[str, list[str]]:
     if not full:
         return "", []
     
-    # 1. D'abord essayer le cas où énoncé et options sont sur des lignes séparées
-    lines = [line.strip() for line in full.splitlines() if line.strip()]
+    # 0. Nettoyer et normaliser le texte d'entrée
+    # Remplacer les espaces insécables et normaliser les retours
+    full_clean = full.replace("\r\n", "\n").replace("\r", "\n")
+    full_clean = re.sub(r"[\t\u00a0]+", " ", full_clean)
+    
+    # 1. Essayer le cas où énoncé et options sont sur des lignes séparées
+    lines = [line.strip() for line in full_clean.splitlines() if line.strip()]
     if len(lines) >= 3:
-        stem_lines = []
-        option_lines = []
         # Trouver la première ligne qui ressemble à une option
         option_start_idx = None
         for i, line in enumerate(lines):
             if _looks_like_option_line(line):
                 option_start_idx = i
                 break
+        
         if option_start_idx is not None and option_start_idx > 0 and (len(lines) - option_start_idx) >= 2:
             stem_lines = lines[:option_start_idx]
-            option_lines = lines[option_start_idx:]
+            option_lines_raw = lines[option_start_idx:]
+            
+            # Fusionner les lignes d'options qui sont des continuations
+            option_lines = _merge_split_option_parts(option_lines_raw)
+            
             # Extraire le texte de chaque option
             embedded = []
             for opt_line in option_lines:
-                cleaned_opt = _strip_option_letter_prefix(opt_line)
-                if cleaned_opt:
+                # D'abord retirer les références NB
+                opt_clean = strip_nb_references(opt_line)
+                cleaned_opt = _strip_option_letter_prefix(opt_clean)
+                # Filtrer les lignes qui ressemblent à des clés de réponse (A, B, AB)
+                if cleaned_opt and not _looks_like_answer_key_not_option(cleaned_opt):
                     embedded.append(cleaned_opt)
+            
+            # Limiter à 4 options comme dans le PDF
+            embedded = embedded[:QUIZ_MAX_OPTIONS]
+            
             if len(embedded) >= 2:
                 stem = " ".join(stem_lines)
-                return _normalize_stem_text(_strip_question_number_prefix(stem)), _normalize_option_texts(embedded)
+                stem = _strip_question_number_prefix(stem)
+                # Nettoyer les fragments de mots dans l'énoncé
+                stem = _clean_fragmented_text(stem)
+                return _normalize_stem_text(stem), _normalize_option_texts(embedded)
     
-    # 2. Essayer les méthodes classiques si la méthode ci-dessus n'a pas fonctionné
-    stem, embedded = _split_stem_and_embedded_options(full)
+    # 2. Essayer les méthodes classiques avec patterns A), B), etc.
+    stem, embedded = _split_stem_and_embedded_options(full_clean)
     if len(embedded) >= 2:
-        return _normalize_stem_text(_strip_question_number_prefix(stem)), _normalize_option_texts(embedded)
-    stem_n, embedded_n = _split_stem_embedded_numbered_options(full)
+        stem = _strip_question_number_prefix(stem)
+        stem = _clean_fragmented_text(stem)
+        return _normalize_stem_text(stem), _normalize_option_texts(embedded)
+    
+    # 3. Essayer avec options numérotées 1), 2), etc.
+    stem_n, embedded_n = _split_stem_embedded_numbered_options(full_clean)
     if len(embedded_n) >= 2:
-        return _normalize_stem_text(_strip_question_number_prefix(stem_n)), _normalize_option_texts(embedded_n)
-    stem_b, embedded_b = _split_stem_embedded_bullet_options(full)
+        stem_n = _strip_question_number_prefix(stem_n)
+        stem_n = _clean_fragmented_text(stem_n)
+        return _normalize_stem_text(stem_n), _normalize_option_texts(embedded_n)
+    
+    # 4. Essayer avec puces
+    stem_b, embedded_b = _split_stem_embedded_bullet_options(full_clean)
     if len(embedded_b) >= 2:
-        return _normalize_stem_text(_strip_question_number_prefix(stem_b)), _normalize_option_texts(embedded_b)
-    return _normalize_stem_text(_strip_question_number_prefix(full)), []
+        stem_b = _strip_question_number_prefix(stem_b)
+        stem_b = _clean_fragmented_text(stem_b)
+        return _normalize_stem_text(stem_b), _normalize_option_texts(embedded_b)
+    
+    # 5. Dernier recours: essayer de deviner la structure
+    # Si on a au moins 4 lignes, peut-être que c'est: énoncé, A..., B..., C..., D...
+    if len(lines) >= 5:
+        possible_stem = lines[0]
+        possible_options = lines[1:5]  # Prendre jusqu'à 4 options
+        # Vérifier que les 4 lignes suivantes pourraient être des options
+        if all(len(opt) > 5 for opt in possible_options):
+            cleaned_opts = [_strip_option_letter_prefix(opt) for opt in possible_options]
+            cleaned_opts = [o for o in cleaned_opts if o]
+            if len(cleaned_opts) >= 2:
+                possible_stem = _strip_question_number_prefix(possible_stem)
+                possible_stem = _clean_fragmented_text(possible_stem)
+                return _normalize_stem_text(possible_stem), _normalize_option_texts(cleaned_opts)
+    
+    stem = _strip_question_number_prefix(full)
+    stem = _clean_fragmented_text(stem)
+    return _normalize_stem_text(stem), []
 
 
 def _looks_like_option_line(text: str) -> bool:
-    """Vrai si la ligne commence par une marque de proposition (A., B), 1., etc.)."""
+    """Vrai si la ligne commence par une marque de proposition (A., B), A-, (A), etc.)."""
     t = (text or "").strip()
     if not t:
         return False
-    # A), B., a), b.
-    if re.match(r"^[A-Za-z]\s*[\)\.\-–]", t):
+    # Normaliser les espaces et tirnets
+    t_norm = re.sub(r"[\s\u00a0]+", " ", t)
+    # A), B., A-, A–, A:, a), b. — avec ou sans espace avant le séparateur
+    if re.match(r"^[A-Za-z]\s*[\)\.\-\u2013:、]", t_norm):
         return True
-    # 1), 2. (si utilisé pour les options)
-    if re.match(r"^[1-9][0-9]?\s*[\)\.\-–]", t):
+    # (A), (B), (a), (b) — lettre entre parenthèses
+    if re.match(r"^\([A-Za-z]\)\s*", t_norm):
+        return True
+    # Lettre majuscule isolée suivie d'au moins 2 mots (ex: "A Le principe de...")
+    # Plus permissif : accepte A-Z suivi d'espace puis n'importe quel mot
+    if re.match(r"^[A-Z]\s+\S", t_norm) and len(t) > 3:
+        # Vérifier que ce n'est pas juste une lettre isolée
+        words = t_norm.split()
+        if len(words) >= 2 and len(words[0]) == 1 and words[0].isalpha():
+            return True
+    # 1), 2., 1-, 2- (si utilisé pour les options)
+    if re.match(r"^[1-9][0-9]?\s*[\)\.\-\u2013:、]", t_norm):
+        return True
+    # Format spécial: lettre suivie immédiatement de texte sans séparateur explicite
+    # ex: "A Le principe" où A est seul et suivi d'un mot commençant par majuscule
+    if re.match(r"^[A-Z]\s+[A-Z]", t):
         return True
     return False
 
@@ -896,95 +1296,118 @@ def _parse_oqr_multiline_blocks(
     - Ligne de tête : N° d'ordre (col. 0) + lettre de réponse (dernière col.)
     - Lignes suivantes : énoncé et « A. … B. … » dans les colonnes centrales (souvent col. 2).
     Gère le cas où le contenu commence en fin de page et le numéro est sur la page suivante.
-    Gère aussi le cas où le numéro est sur la ligne de l'option A et l'énoncé est avant.
     """
-    import logging
-    logger = logging.getLogger(__name__)
     specs: list[dict] = []
     current_n: int | None = None
     current_rep = ""
     block_parts: list[str] = []
-    # Lignes orphelines avant le premier N° (continuation inter-pages)
     orphan_parts: list[str] = []
+    orphan_rep = ""
 
     def flush() -> None:
         nonlocal current_n, current_rep, block_parts
-        logger.info(f"[FLUSH] Tentative de flush pour question #{current_n}, parts count: {len(block_parts)}")
         if not _valid_question_number(current_n):
-            logger.info(f"[FLUSH] Numéro invalide, abandon")
             block_parts = []
             return
         parts = _dedupe_and_clean_block_parts(block_parts)
-        logger.info(f"[FLUSH] Après dedup: {len(parts)} parts")
         block_parts = []
         if not parts:
-            logger.info(f"[FLUSH] Pas de parts, abandon")
             return
         full = "\n".join(parts).strip()
-        logger.info(f"[FLUSH] Full block text:\n{repr(full)}")
         if not full:
-            logger.info(f"[FLUSH] Full block vide, abandon")
             return
         stem, embedded = _embedded_from_merged_question_text(full)
-        logger.info(f"[FLUSH] Extrait - stem: {repr(stem)}, embedded count: {len(embedded)}")
+
+        # Fallback : séparer directement les parts en énoncé / propositions
+        # quand _embedded_from_merged_question_text ne trouve rien
         if len(embedded) < 2:
-            logger.info(f"[FLUSH] Pas assez d'options (<2), abandon")
+            stem_parts: list[str] = []
+            opt_parts: list[str] = []
+            found_first_option = False
+            for p in parts:
+                # Nettoyer avant de vérifier
+                p_clean = strip_nb_references(p).strip()
+                if not p_clean:
+                    continue
+                if not found_first_option and _looks_like_option_line(p_clean):
+                    found_first_option = True
+                if found_first_option:
+                    opt_parts.append(p)
+                else:
+                    stem_parts.append(p)
+            # Limiter à max 4 options comme dans le PDF
+            if len(opt_parts) >= 2 and len(opt_parts) <= QUIZ_MAX_OPTIONS:
+                embedded = [_strip_option_letter_prefix(o) for o in opt_parts]
+                embedded = [e for e in embedded if e and not _looks_like_answer_key_not_option(e)]
+                # Appliquer strip_nb_references sur chaque option
+                embedded = [strip_nb_references(e) for e in embedded]
+                embedded = [e for e in embedded if e]
+                stem = " ".join(stem_parts).strip() if stem_parts else stem
+                # Nettoyer les fragments de mots dans l'énoncé
+                stem = _clean_fragmented_text(stem)
+
+        if len(embedded) < 2:
             return
         correct = _correct_indices_from_rep_vs_options(embedded, current_rep)
-        logger.info(f"[FLUSH] Correct indices: {correct}")
-        prompt = _normalize_stem_text(
-            stem or _strip_question_number_prefix(full.splitlines()[0])[:500] or "Question"
-        )
-        logger.info(f"[FLUSH] Prompt final: {repr(prompt)}")
+        
+        # Construire le prompt final
+        if stem:
+            # Nettoyer les fragments de mots
+            stem = _clean_fragmented_text(stem)
+            prompt = _normalize_stem_text(stem)
+        else:
+            # Essayer de prendre la première ligne comme énoncé si pas de stem détecté
+            first_lines = [p for p in parts if not _looks_like_option_line(p)]
+            if first_lines:
+                prompt_text = _strip_question_number_prefix(first_lines[0])[:500]
+                # Nettoyer les fragments de mots
+                prompt_text = _clean_fragmented_text(prompt_text)
+                prompt = _normalize_stem_text(prompt_text)
+            else:
+                prompt = "Question"
+        
         specs.append(_spec_with_number(prompt, embedded, correct, current_n))
 
-    logger.info(f"[PARSE] Début de parse, {len(data_rows)} lignes de données")
-    for row_idx, row in enumerate(data_rows):
+    for row in data_rows:
         while len(row) < width:
             row.append("")
         n_ord = _parse_ordre_from_row(row, i_o)
-        row_cc = _content_column_indices(i_o, i_r, len(row))
-        if not row_cc:
-            row_cc = _content_column_indices(i_o, i_r, width) or [i_q]
+        row_cc = [i_q] if i_q < len(row) else (_content_column_indices(i_o, i_r, width) or [i_q])
         chunk = _row_merged_content(row, row_cc)
-        
-        logger.info(f"[ROW {row_idx}] n_ord: {n_ord}, chunk: {repr(chunk)}")
-        
-        # 1. Essayer de trouver la réponse sur cette ligne (même sans numéro)
         row_rep = _rep_cell_from_row(row, i_r)
-        
-        # 2. Si on a un nouveau numéro : flush le bloc courant
+
         if _valid_question_number(n_ord):
-            logger.info(f"[ROW {row_idx}] Nouveau numéro de question: {n_ord}")
             flush()
             current_n = n_ord
             if row_rep:
                 current_rep = row_rep
-            logger.info(f"[ROW {row_idx}] Réponse pour #{n_ord}: {repr(current_rep)}")
-            # Si des lignes orphelines précèdent ce premier numéro, elles
-            # font partie de cette question (début en bas de page précédente).
-            if orphan_parts:
-                logger.info(f"[ROW {row_idx}] Ajout de {len(orphan_parts)} lignes orphelines")
-                # Le numéro de question est dans 'chunk', mais comme on prépend 
-                # des lignes, il se retrouverait au milieu de l'énoncé.
+            safe_orphans = _orphan_parts_safe_for_next_question(orphan_parts, has_response=bool(orphan_rep))
+            if safe_orphans:
                 clean_chunk = _strip_question_number_prefix(chunk)
-                block_parts = orphan_parts + ([clean_chunk] if clean_chunk else [])
+                block_parts = safe_orphans + ([clean_chunk] if clean_chunk else [])
+                if orphan_rep and not current_rep:
+                    current_rep = orphan_rep
                 orphan_parts = []
             else:
                 block_parts = [chunk] if chunk else []
+                orphan_parts = []
+            orphan_rep = ""
         elif current_n is not None and chunk:
-            logger.info(f"[ROW {row_idx}] Ajout au bloc courant (#{current_n})")
-            # Si la ligne contient une réponse, mettre à jour current_rep
-            if row_rep:
-                logger.info(f"[ROW {row_idx}] Mise à jour de la réponse pour #{current_n} en {repr(row_rep)}")
-                current_rep = row_rep
-            block_parts.append(chunk)
+            if row_rep and _block_has_complete_options(block_parts):
+                flush()
+                orphan_parts = [chunk]
+                orphan_rep = row_rep
+                current_n = None
+                current_rep = ""
+            else:
+                if row_rep:
+                    current_rep = row_rep
+                block_parts.append(chunk)
         elif current_n is None and chunk:
-            logger.info(f"[ROW {row_idx}] Ajout à orphan_parts")
-            # Pas encore de numéro vu — garder pour la prochaine question
             orphan_parts.append(chunk)
+            if row_rep:
+                orphan_rep = row_rep
     flush()
-    logger.info(f"[PARSE] Fin de parse, {len(specs)} questions créées")
     return specs
 
 
@@ -1039,9 +1462,7 @@ def _try_ordre_question_reponse_table(rows: list[list[str]]) -> list[dict] | Non
     if multiline_specs:
         return _finalize_quiz_specs(multiline_specs) or None
 
-    prop_col_indices: list[int] = []
-    if i_q < i_r:
-        prop_col_indices = [j for j in range(i_q + 1, i_r)][:QUIZ_MAX_OPTIONS]
+    prop_col_indices = _explicit_option_column_indices(header, i_q, i_r)
     content_cols = list(range(i_o + 1, i_r)) or [i_q]
 
     specs: list[dict] = []
@@ -1049,7 +1470,7 @@ def _try_ordre_question_reponse_table(rows: list[list[str]]) -> list[dict] | Non
         while len(row) < width:
             row.append("")
         ordre_s = (row[i_o] if i_o < len(row) else "").strip()
-        row_cc = _content_column_indices(i_o, i_r, len(row)) or content_cols
+        row_cc = [i_q] if i_q < len(row) else content_cols
         q_cell = _row_merged_content(row, row_cc) or (row[i_q] if i_q < len(row) else "").strip()
         rep_cell = _rep_cell_from_row(row, i_r)
         if not q_cell:
@@ -1114,6 +1535,8 @@ def _normalize_matrix_cell_text(raw: object) -> str:
     s = str(raw).replace("\r\n", "\n").replace("\r", "\n").strip()
     if not s:
         return ""
+    # Nettoyer les fragments de texte (mots coupés aux mauvais endroits)
+    s = _clean_fragmented_text(s)
     lines: list[str] = []
     for ln in s.split("\n"):
         t = re.sub(r"[ \t\u00a0]+", " ", ln).strip()
