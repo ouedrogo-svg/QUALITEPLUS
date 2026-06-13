@@ -288,6 +288,99 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
     return consolidated
 
 
+def _extract_questions_from_plain_text(text: str) -> list[dict]:
+    """Extraire les questions depuis du texte brute (si les tableaux ne sont pas détectés)."""
+    from .quiz_import import (
+        _parse_reponses_cell, 
+        _spec_with_number, 
+        _valid_question_number,
+    )
+    
+    specs = []
+    # Séparer le texte en blocs par "Question X"
+    question_blocks = re.split(r"(?i)Question\s*\d+", text)
+    # Récupérer les numéros de question
+    question_numbers = re.findall(r"(?i)Question\s*(\d+)", text)
+    
+    if not question_blocks or not question_numbers:
+        return []
+    
+    # On saute le premier bloc (vide avant la première question)
+    for i, block in enumerate(question_blocks[1:], start=0):
+        if i >= len(question_numbers):
+            break
+        
+        q_num = int(question_numbers[i])
+        if not _valid_question_number(q_num):
+            continue
+            
+        block = block.strip()
+        if not block:
+            continue
+            
+        # Extraire les options (A), B), ..., Z), 1), 2), ...)
+        option_matches = list(re.finditer(
+            r"(?m)^[\t ]*([A-Za-z0-9]+)[\)\.\:]+\s*(.*?)(?=(?:^[\t ]*[A-Za-z0-9]+[\)\.\:])|$)",
+            block,
+            re.DOTALL
+        ))
+        
+        if len(option_matches) < 2:
+            # Essayer une autre regex pour les options avec parenthèses ou espacées
+            option_matches = list(re.finditer(
+                r"(?m)^[\t ]*([A-Za-z0-9]+)[\)\.\:]\s*(.*?)(?=\n\n|\n[A-Za-z0-9]+[\)\.\:]|$)",
+                block,
+                re.DOTALL
+            ))
+            if len(option_matches) < 2:
+                continue
+                
+        # Récupérer l'énoncé (tout ce qui est avant la première option)
+        first_option_start = option_matches[0].start()
+        stem = block[:first_option_start].strip()
+        stem = re.sub(r"^\s*:\s*", "", stem)  # Supprimer les deux-points au début
+        
+        if not stem:
+            # Si pas d'énoncé, prendre la première phrase
+            first_line = block.splitlines()[0]
+            stem = re.sub(r"^[\t ]*[A-Za-z0-9]+[\)\.\:]", "", first_line).strip()
+        
+        # Extraire les textes des options
+        options = []
+        for match in option_matches:
+            option_text = match.group(2).strip() if len(match.groups()) > 1 else ""
+            if not option_text:
+                option_text = match.group(0).strip()
+                option_text = re.sub(r"^[\t ]*[A-Za-z0-9]+[\)\.\:]\s*", "", option_text)
+            option_text = re.sub(r"\s+", " ", option_text)  # Normaliser les espaces
+            if option_text:
+                options.append(option_text)
+        
+        if len(options) < 2:
+            continue
+            
+        # Essayer de trouver la réponse correcte (si elle est dans le texte)
+        correct = []
+        # Chercher des marqueurs comme "Réponse: C" ou "Correct: A, B"
+        answer_markers = [
+            r"(?i)(?:R[ée]ponse|Correct|Vrai)[\s\:]*([A-Za-z0-9\s\,\;]+)",
+            r"(?i)(?:Réponses|Corrects)[\s\:]*([A-Za-z0-9\s\,\;]+)",
+        ]
+        
+        for marker in answer_markers:
+            answer_match = re.search(marker, block)
+            if answer_match:
+                answer_str = answer_match.group(1).strip()
+                correct = _parse_reponses_cell(answer_str)
+                if correct:
+                    break
+        
+        # Si pas de réponse trouvée, on laisse vide
+        specs.append(_spec_with_number(stem, options, correct, q_num))
+    
+    return specs
+
+
 def _score_quiz_specs(specs: list[dict]) -> tuple[int, int, int]:
     """Plus haut = mieux : couverture des N°, puis nombre de questions, puis max N°."""
     if not specs:
@@ -318,6 +411,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                     logger.info(f"Absorbant question #{n} (options : {len(spec.get('texts', []))}, prompt : {spec.get('prompt','')[:50]})")
                     by_number[n] = spec
 
+        # 1. Essayer d'abord avec les tableaux (comme avant)
         data_rows = _consolidated_correction_rows_from_pdf(path)
         if data_rows:
             absorb(specs_from_correction_table_rows(data_rows))
@@ -397,6 +491,20 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
 
             if by_number:
                 last_ordre = max(by_number.keys())
+
+        # 2. Si pas de questions ou pas assez, essayer l'extraction texte brute (fallback)
+        if len(by_number) < 10:
+            import pdfplumber
+            logger.info("Tentative d'extraction depuis le texte brute (fallback)...")
+            
+            try:
+                with pdfplumber.open(path) as pdf:
+                    full_text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+                    plain_text_specs = _extract_questions_from_plain_text(full_text)
+                    absorb(plain_text_specs, allow_incomplete=True)
+                    logger.info(f"Fallback extrait {len(plain_text_specs)} questions")
+            except Exception as e:
+                logger.exception(f"Erreur lors de l'extraction fallback : {e}")
 
         logger.info(f"Avant plausibilité : {len(by_number)} questions")
         
