@@ -810,6 +810,32 @@ def _embedded_from_merged_question_text(full: str) -> tuple[str, list[str]]:
     full = (full or "").strip()
     if not full:
         return "", []
+    
+    # 1. D'abord essayer le cas où énoncé et options sont sur des lignes séparées
+    lines = [line.strip() for line in full.splitlines() if line.strip()]
+    if len(lines) >= 3:
+        stem_lines = []
+        option_lines = []
+        # Trouver la première ligne qui ressemble à une option
+        option_start_idx = None
+        for i, line in enumerate(lines):
+            if _looks_like_option_line(line):
+                option_start_idx = i
+                break
+        if option_start_idx is not None and option_start_idx > 0 and (len(lines) - option_start_idx) >= 2:
+            stem_lines = lines[:option_start_idx]
+            option_lines = lines[option_start_idx:]
+            # Extraire le texte de chaque option
+            embedded = []
+            for opt_line in option_lines:
+                cleaned_opt = _strip_option_letter_prefix(opt_line)
+                if cleaned_opt:
+                    embedded.append(cleaned_opt)
+            if len(embedded) >= 2:
+                stem = " ".join(stem_lines)
+                return _normalize_stem_text(_strip_question_number_prefix(stem)), _normalize_option_texts(embedded)
+    
+    # 2. Essayer les méthodes classiques si la méthode ci-dessus n'a pas fonctionné
     stem, embedded = _split_stem_and_embedded_options(full)
     if len(embedded) >= 2:
         return _normalize_stem_text(_strip_question_number_prefix(stem)), _normalize_option_texts(embedded)
@@ -870,6 +896,7 @@ def _parse_oqr_multiline_blocks(
     - Ligne de tête : N° d'ordre (col. 0) + lettre de réponse (dernière col.)
     - Lignes suivantes : énoncé et « A. … B. … » dans les colonnes centrales (souvent col. 2).
     Gère le cas où le contenu commence en fin de page et le numéro est sur la page suivante.
+    Gère aussi le cas où le numéro est sur la ligne de l'option A et l'énoncé est avant.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -923,24 +950,16 @@ def _parse_oqr_multiline_blocks(
         
         logger.info(f"[ROW {row_idx}] n_ord: {n_ord}, chunk: {repr(chunk)}")
         
-        # Fallback : si le numéro n'est pas dans la colonne N°, il est peut-être 
-        # fusionné au début de la colonne texte (ex: "12. Quel est...")
-        if n_ord is None and chunk:
-            m = re.match(r"^\s*(?:n[o°]|q(?:uestion)?\s*)?\s*(\d{1,3})\s*[\.\)\:、\-–]\s*", chunk, flags=re.IGNORECASE)
-            if m:
-                potential_n = int(m.group(1))
-                if _valid_question_number(potential_n):
-                    # On vérifie que ce n'est pas juste une proposition "1) ..."
-                    # en regardant s'il y a déjà un numéro en cours ou si c'est le début.
-                    if current_n is None or potential_n == current_n + 1 or potential_n == 1:
-                        n_ord = potential_n
-                        logger.info(f"[ROW {row_idx}] Numéro extrait du chunk: {n_ord}")
-
+        # 1. Essayer de trouver la réponse sur cette ligne (même sans numéro)
+        row_rep = _rep_cell_from_row(row, i_r)
+        
+        # 2. Si on a un nouveau numéro : flush le bloc courant
         if _valid_question_number(n_ord):
             logger.info(f"[ROW {row_idx}] Nouveau numéro de question: {n_ord}")
             flush()
             current_n = n_ord
-            current_rep = _rep_cell_from_row(row, i_r)
+            if row_rep:
+                current_rep = row_rep
             logger.info(f"[ROW {row_idx}] Réponse pour #{n_ord}: {repr(current_rep)}")
             # Si des lignes orphelines précèdent ce premier numéro, elles
             # font partie de cette question (début en bas de page précédente).
@@ -955,6 +974,10 @@ def _parse_oqr_multiline_blocks(
                 block_parts = [chunk] if chunk else []
         elif current_n is not None and chunk:
             logger.info(f"[ROW {row_idx}] Ajout au bloc courant (#{current_n})")
+            # Si la ligne contient une réponse, mettre à jour current_rep
+            if row_rep:
+                logger.info(f"[ROW {row_idx}] Mise à jour de la réponse pour #{current_n} en {repr(row_rep)}")
+                current_rep = row_rep
             block_parts.append(chunk)
         elif current_n is None and chunk:
             logger.info(f"[ROW {row_idx}] Ajout à orphan_parts")
