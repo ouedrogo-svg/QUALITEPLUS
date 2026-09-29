@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Page introuvable (404) — QUALITEPLUS{% endblock %}
+
+{% block content %}
+<div class="container narrow" style="text-align: center; padding: 4rem 1rem;">
+  <div style="font-size: 4rem; font-weight: 800; color: var(--primary, #2563eb); margin-bottom: 1rem;">
+    404
+  </div>
+  <h1 style="font-size: 1.75rem; margin-bottom: 1rem;">Ressource ou page introuvable</h1>
+  <p class="lead" style="color: #64748b; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">
+    La ressource demandée est introuvable sur ce serveur. Il est possible que le lien soit incorrect, que le contenu ait été déplacé ou qu'un abonnement actif soit nécessaire pour y accéder.
+  </p>
+  <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+    <a href="{% url 'courses:home' %}" class="btn btn-primary">Retour à l'accueil</a>
+    {% if user.is_authenticated %}
+      <a href="{% url 'courses:my_subscription' %}" class="btn btn-secondary">Mon abonnement</a>
+    {% else %}
+      <a href="{% url 'accounts:login' %}" class="btn btn-secondary">Se connecter</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

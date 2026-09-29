@@ -7,7 +7,9 @@ import os
 import re
 import tempfile
 from collections import defaultdict
+from pathlib import Path
 
+from django.conf import settings
 from django.core.cache import cache
 
 from .quiz_import import (
@@ -539,18 +541,41 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
 
 
 
+def _find_local_pdf_path(pdf_field):
+    """
+    Tente de trouver le fichier PDF sur le disque local (dans MEDIA_ROOT).
+    Supporte les chemins directs, les chemins relatifs et la recherche par nom de fichier.
+    """
+    if not pdf_field:
+        return None
+    try:
+        if hasattr(pdf_field, "path") and os.path.exists(pdf_field.path):
+            return pdf_field.path
+    except (ValueError, NotImplementedError, AttributeError):
+        pass
+    candidate = Path(settings.MEDIA_ROOT) / pdf_field.name
+    if candidate.is_file():
+        return str(candidate)
+    filename = os.path.basename(pdf_field.name)
+    if filename:
+        for match in Path(settings.MEDIA_ROOT).rglob(filename):
+            if match.is_file():
+                return str(match)
+    return None
+
+
 def _resolve_pdf_to_local_path(pdf_field):
     """
     Retourne un chemin local vers le PDF.
-    - FileSystemStorage : retourne directement .path
-    - Cloudinary / stockage distant : telecharge dans un fichier temporaire.
+    - Vérification locale prioritaire (MEDIA_ROOT / disque).
+    - Cloudinary / stockage distant : télécharge dans un fichier temporaire.
     Retourne None si impossible.
     """
-    try:
-        return pdf_field.path
-    except (ValueError, NotImplementedError, AttributeError):
-        pass
-    # Stockage distant : telecharger via l'URL
+    local = _find_local_pdf_path(pdf_field)
+    if local:
+        return local
+
+    # Stockage distant : télécharger via l'URL
     try:
         url = pdf_field.url
     except Exception:
@@ -573,6 +598,15 @@ def _resolve_pdf_to_local_path(pdf_field):
 
 def _cleanup_temp_pdf(path, pdf_field):
     """Supprime le fichier temporaire si c'etait un telechargement distant."""
+    if not path:
+        return
+    # Ne jamais supprimer un fichier local existant dans MEDIA_ROOT
+    try:
+        media_root = Path(settings.MEDIA_ROOT).resolve()
+        if Path(path).resolve().is_relative_to(media_root):
+            return
+    except Exception:
+        pass
     try:
         local = pdf_field.path
         if local == path:
@@ -580,7 +614,7 @@ def _cleanup_temp_pdf(path, pdf_field):
     except (ValueError, NotImplementedError, AttributeError):
         pass
     try:
-        if path and os.path.exists(path):
+        if os.path.exists(path):
             os.unlink(path)
     except OSError:
         pass

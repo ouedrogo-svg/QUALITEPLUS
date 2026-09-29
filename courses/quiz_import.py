@@ -539,27 +539,14 @@ def _split_stem_embedded_bullet_options(full_question: str) -> tuple[str, list[s
 
 def _correct_indices_from_rep_vs_options(embedded: list[str], rep_cell: str) -> list[int]:
     """
-    Interprète la colonne « Réponses » pour cocher les bonnes cases : indices / lettres,
-    ou texte identique (ou très proche) d’une proposition — jamais affiché comme choix.
+    Interprète la colonne « Réponses » pour cocher les bonnes cases : indices / lettres.
+
+    Ne se base que sur la colonne de correction, sans deviner la réponse à partir du texte
+    des propositions.
     """
-    rep = (rep_cell or "").strip()
-    if not rep or not embedded:
+    if not (rep_cell or "").strip() or not embedded:
         return []
-    idxs = _parse_reponses_cell(rep)
-    idxs_ok = sorted({i for i in idxs if 1 <= i <= len(embedded)})
-    if idxs_ok:
-        return idxs_ok
-    rep_l = rep.lower()
-    for j, t in enumerate(embedded):
-        tt = t.strip().lower()
-        if tt == rep_l:
-            return [j + 1]
-    if len(rep_l) >= 2:
-        for j, t in enumerate(embedded):
-            tt = t.strip().lower()
-            if rep_l in tt or tt in rep_l:
-                return [j + 1]
-    return []
+    return [i for i in _parse_reponses_cell(rep_cell) if 1 <= i <= len(embedded)]
 
 
 def _parse_ordre_cell(cell: str) -> int | None:

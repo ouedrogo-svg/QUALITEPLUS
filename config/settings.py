@@ -132,6 +132,7 @@ CLOUDINARY_STORAGE = {
     "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME", default=""),
     "API_KEY": config("CLOUDINARY_API_KEY", default=""),
     "API_SECRET": config("CLOUDINARY_API_SECRET", default=""),
+    "PREFIX": config("CLOUDINARY_PREFIX", default=""),
     # Stocker les PDF tels quels (pas de transformation image)
     "RESOURCE_TYPE": "raw",
 }
@@ -151,7 +152,7 @@ STORAGES = {
     },
 }
 
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # En local (pas de Cloudinary), s'assurer que le dossier media existe.

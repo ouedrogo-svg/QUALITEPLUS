@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Erreur serveur (500) — QUALITEPLUS{% endblock %}
+
+{% block content %}
+<div class="container narrow" style="text-align: center; padding: 4rem 1rem;">
+  <div style="font-size: 4rem; font-weight: 800; color: #dc2626; margin-bottom: 1rem;">
+    500
+  </div>
+  <h1 style="font-size: 1.75rem; margin-bottom: 1rem;">Une erreur est survenue</h1>
+  <p class="lead" style="color: #64748b; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">
+    Une erreur inattendue s'est produite lors du traitement de votre demande sur le serveur.
+  </p>
+  <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+    <a href="{% url 'courses:home' %}" class="btn btn-primary">Retour à l'accueil</a>
+  </div>
+</div>
+{% endblock %}

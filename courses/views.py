@@ -1,13 +1,15 @@
 import os
 import re
+from pathlib import Path
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.db.models import Count, Q
 from django.core.exceptions import PermissionDenied
-from django.http import FileResponse, HttpResponse, Http404
+from django.http import FileResponse, HttpResponse, HttpResponseForbidden, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -47,18 +49,53 @@ from .pdf_quiz_import import try_rebuild_quiz_for_correction, try_rebuild_quiz_f
 _OPTION_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
+def _find_local_pdf_path(pdf_field):
+    """
+    Tente de trouver le fichier PDF sur le disque local (dans MEDIA_ROOT).
+    Supporte les chemins directs, les chemins relatifs et la recherche par nom de fichier.
+    """
+    if not pdf_field:
+        return None
+    # 1. Chemin direct via storage si disponible
+    try:
+        if hasattr(pdf_field, "path") and os.path.exists(pdf_field.path):
+            return pdf_field.path
+    except (ValueError, NotImplementedError, AttributeError):
+        pass
+    # 2. Chemin MEDIA_ROOT / nom enregistré
+    candidate = Path(settings.MEDIA_ROOT) / pdf_field.name
+    if candidate.is_file():
+        return str(candidate)
+    # 3. Recherche récursive par nom de fichier dans MEDIA_ROOT
+    filename = os.path.basename(pdf_field.name)
+    if filename:
+        for match in Path(settings.MEDIA_ROOT).rglob(filename):
+            if match.is_file():
+                return str(match)
+    return None
+
+
 def _serve_pdf(pdf_field, *, inline: bool = True):
     """
     Sert un fichier PDF depuis le stockage configuré (local ou Cloudinary).
-    Avec Cloudinary (RawMediaCloudinaryStorage), le fichier n'est pas sur le
-    disque local : on le télécharge via son URL publique.
+    En local ou si le fichier est présent sur disque (MEDIA_ROOT), il est servi directement.
+    Sinon, s'il s'agit d'un stockage distant (Cloudinary), on le télécharge via son URL.
     """
     if not pdf_field:
         raise Http404()
     filename = os.path.basename(pdf_field.name)
     disposition = "inline" if inline else "attachment"
 
-    # --- Stockage distant (Cloudinary) : le champ expose .url -----------
+    # --- 1. Vérification locale prioritaire (disque / MEDIA_ROOT) ---
+    local_path = _find_local_pdf_path(pdf_field)
+    if local_path:
+        response = FileResponse(
+            open(local_path, "rb"), as_attachment=(not inline), filename=filename
+        )
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+        return response
+
+    # --- 2. Stockage distant (Cloudinary) : téléchargement via URL ---
     try:
         url = pdf_field.url
     except Exception:
@@ -70,23 +107,23 @@ def _serve_pdf(pdf_field, *, inline: bool = True):
         try:
             r = _req.get(url, timeout=30)
             r.raise_for_status()
+            response = HttpResponse(r.content, content_type="application/pdf")
+            response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+            response["Content-Length"] = len(r.content)
+            return response
         except Exception:
             raise Http404("Le fichier PDF est introuvable sur le serveur distant.")
-        response = HttpResponse(r.content, content_type="application/pdf")
-        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
-        response["Content-Length"] = len(r.content)
-        return response
 
-    # --- Stockage local (FileSystemStorage) ----------------------------
+    # --- 3. Tentative standard storage.open() ---
     try:
         content_file = pdf_field.open("rb")
-    except (FileNotFoundError, ValueError):
+        response = FileResponse(
+            content_file, as_attachment=(not inline), filename=filename
+        )
+        response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+        return response
+    except (FileNotFoundError, ValueError, Exception):
         raise Http404("Le fichier PDF est introuvable sur le serveur.")
-    response = FileResponse(
-        content_file, as_attachment=(not inline), filename=filename
-    )
-    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
-    return response
 
 
 def _strip_legacy_question_prefix(prompt: str) -> str:
@@ -600,7 +637,7 @@ def correction_pdf_inline(request, category_slug, year, month, pk):
     """Affichage PDF en ligne (lecture seule) pour les candidats abonnés."""
     category, correction = _get_monthly_correction(request, category_slug, year, month, pk)
     if not _user_has_content_access(request.user, category, year, month):
-        raise Http404()
+        return HttpResponseForbidden("Accès refusé : un abonnement actif est requis pour consulter ce corrigé.")
     return _serve_pdf(correction.pdf, inline=True)
 
 
@@ -723,7 +760,7 @@ def monthly_pdf_inline(request, category_slug, year, month, pk):
         month=month,
     )
     if not _user_has_content_access(request.user, category, year, month):
-        raise Http404()
+        return HttpResponseForbidden("Accès refusé : un abonnement actif est requis pour consulter ce document.")
     return _serve_pdf(content.pdf, inline=True)
 
 
