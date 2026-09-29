@@ -43,7 +43,11 @@ def _finalize_quiz_specs(specs: list[dict]) -> list[dict]:
         spec = _sanitize_question_spec_dict(spec)
         if n not in by_number:
             by_number[n] = spec
-    return [by_number[i] for i in sorted(by_number.keys())]
+    ordered = [by_number[i] for i in sorted(by_number.keys())]
+    # Si les 60 questions principales sont complètes (1..60), ignorer les notes/décrets parasites au-delà
+    if len(ordered) > 60 and all(i in by_number for i in range(1, 61)):
+        ordered = [by_number[i] for i in range(1, 61)]
+    return ordered
 
 
 def _norm_header(s: str) -> str:
