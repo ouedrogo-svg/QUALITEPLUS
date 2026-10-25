@@ -415,9 +415,20 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                     continue
                 if not allow_incomplete and not _spec_is_plausible(spec):
                     continue
+                if n in by_number:
+                    existing = by_number[n]
+                    existing_prompt = (existing.get("prompt") or "").strip()
+                    existing_opts = len(existing.get("texts") or [])
+                    new_prompt = (spec.get("prompt") or "").strip()
+                    new_opts = len(spec.get("texts") or [])
+                    # Ne jamais écraser une question déjà complète et propre par une question tronquée
+                    if len(existing_prompt) >= 20 and existing_opts >= 3:
+                        if len(new_prompt) < 20 or new_opts < existing_opts:
+                            continue
                 if n not in by_number or _spec_richness(spec) > _spec_richness(by_number[n]):
                     logger.info(f"Absorbant question #{n} (options : {len(spec.get('texts', []))}, prompt : {spec.get('prompt','')[:50]})")
                     by_number[n] = spec
+
 
         # 1. Essayer d'abord avec les tableaux (comme avant)
         data_rows = _consolidated_correction_rows_from_pdf(path)
@@ -489,7 +500,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                         current_needs_prefix = (
                             not current_prompt
                             or current_prompt == "Question"
-                            or len(current_prompt) < 25
+                            or len(current_prompt) < 15
                             or _looks_like_option_line(current_prompt)
                         )
                         if current_needs_prefix:

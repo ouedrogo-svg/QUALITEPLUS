@@ -250,18 +250,29 @@ def _clean_option_text_fragment(text: str) -> str:
 
 
 def _looks_like_answer_key_not_option(text: str) -> bool:
-    """Vrai si le texte n’est qu’une clé de correction (A, B, ABC…), pas une vraie proposition."""
+    """
+    Vrai si le texte n'est qu'une clé de correction isolée (ex: 'A' seul ou 'Réponse: B'),
+    mais FAUX pour les propositions de QCM légitimes comme 'ABC', 'AB', 'A et B'
+    qui désignent des choix de réponses multiples.
+    """
     t = re.sub(r"\s+", " ", (text or "").strip())
     if not t:
         return True
-    # Proposition réelle (mots en minuscules : « A et B », « A prix ferme », etc.)
+    # Clé de réponse explicite
+    if re.match(r"^(?:r[ée]ponses?|corrig[ée]|cl[ée]|solutions?)\s*[:\-]", t, re.IGNORECASE):
+        return True
+    # Proposition réelle avec texte en minuscules
     if re.search(r"[a-zàâäéèêëïîôùûüçœ]{2,}", t):
         return False
     if "'" in t or "’" in t:
         return False
     compact = re.sub(r"\s+", "", t.upper())
+    # Lettre seule isolée (ex: "A", "B") sans texte
     if len(compact) == 1 and "A" <= compact <= "Z":
         return True
+    # Dans les QCM, "ABC", "AB", "BC", "CD", "ABCD", etc. sont des propositions légitimes ("Toutes les propositions A, B et C")
+    if re.fullmatch(r"[A-D]{2,4}", compact):
+        return False
     if re.fullmatch(r"[A-Z]{2,20}", compact):
         return True
     return bool(_ANSWER_KEY_ONLY_RE.match(t) and len(t) <= 40)
@@ -818,7 +829,7 @@ def _spec_richness(spec: dict) -> tuple[int, int, int, int, int]:
     prompt_quality = 1 if (len(prompt) >= 20 and is_corrupt == 0) else 0
     prompt_len_score = min(len(prompt), 300) if is_corrupt == 0 else -len(prompt)
     
-    return (is_corrupt, has_correct, opts_score, prompt_quality, prompt_len_score)
+    return (is_corrupt, prompt_quality, opts_score, has_correct, prompt_len_score)
 
 
 def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str], *, prepend: bool = False) -> dict:
@@ -1033,14 +1044,17 @@ def _explicit_option_column_indices(header: list[str], i_q: int, i_r: int) -> li
 
 
 def _is_false_option_line(text: str) -> bool:
-    """Ligne type « D) ABC » : clé de correction PDF, pas une proposition."""
+    """Ligne parasite type 'Réponse: C' ou en-tête égaré, pas une proposition valide."""
     t = (text or "").strip()
     if not t:
         return False
-    if _FALSE_OPTION_LINE_RE.match(t):
+    if re.match(r"^(?:r[ée]ponses?|corrig[ée]|cl[ée]|solutions?)\s*[:\-]", t, re.IGNORECASE):
         return True
     body = _strip_option_letter_prefix(t)
-    return bool(body) and _looks_like_answer_key_not_option(body)
+    # Si la ligne n'avait pas de préfixe d'option et n'est qu'une clé de correction isolée
+    if body == t and _looks_like_answer_key_not_option(t):
+        return True
+    return False
 
 
 def _dedupe_and_clean_block_parts(parts: list[str]) -> list[str]:
