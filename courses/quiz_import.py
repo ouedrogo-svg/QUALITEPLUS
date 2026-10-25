@@ -334,13 +334,36 @@ _WORD_FRAGMENTS = {
     'comptable matière': 'comptable matière',  # Pas de changement mais valide
 }
 
+_NB_START_PATTERN = re.compile(
+    r"""
+    (?:^|[\s\n\(\[\.,;–—])
+    (?:
+        (?:\bN\s*\.?\s*B\s*\.?|\bNOTA\s+BENE)\b
+        \s*
+        (?:
+            [:\.\-–—]
+            |
+            (?=(?:page|art(?:icle)?|guide|instruction|source|d[eé]cret|loi|arr[eê]t[eé]|conf[eè]re|voir|r[eé]f|\d)\b)
+        )
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _looks_like_nb_line(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    return bool(_NB_START_PATTERN.search(t))
+
+
 # En-têtes de table à filtrer
 _HEADER_PATTERNS = [
     r'^Cont\s+Pr[eéè]p',
     r'^Adj\s+Cons',
     r'r[eéè]po\s+rdre',
     r'^rdre\s+Questions',
-    r'^NB\s*:\s*page\s*\d+',
 ]
 
 def _fix_word_fragments(text: str) -> str:
@@ -375,8 +398,14 @@ def _clean_fragmented_text(text: str) -> str:
     filtered = []
     for line in lines:
         line = line.strip()
-        if line and not _is_header_line(line):
-            filtered.append(line)
+        if not line:
+            continue
+        if _is_header_line(line):
+            continue
+        if _looks_like_nb_line(line):
+            # Tout ce qui suit est la note NB
+            break
+        filtered.append(line)
     
     if not filtered:
         return ""
@@ -427,20 +456,38 @@ def _clean_fragmented_text(text: str) -> str:
 
 
 def strip_nb_references(text: str) -> str:
-    """Retire les mentions « NB : Article… » (non affichées dans le quiz)."""
+    """Retire les mentions « NB : Article… » et toutes leurs lignes de suite (non affichées dans le quiz)."""
     t = (text or "").strip()
     if not t:
         return ""
-    # D'abord nettoyer les fragments
-    t = _clean_fragmented_text(t)
-    lines = [
-        ln
-        for ln in t.splitlines()
-        if ln.strip() and not re.match(r"^\s*NB\s*:", ln.strip(), flags=re.IGNORECASE)
-    ]
-    t = "\n".join(lines).strip()
-    t = re.sub(r"\s*NB\s*:\s*.*$", "", t, flags=re.IGNORECASE | re.MULTILINE).strip()
-    return t
+    lines = t.splitlines()
+    clean_lines: list[str] = []
+    for ln in lines:
+        ln_s = ln.strip()
+        if not ln_s:
+            continue
+        m = _NB_START_PATTERN.search(ln_s)
+        if m:
+            if m.start() == 0 or not ln_s[:m.start()].strip():
+                break
+            prefix = ln_s[:m.start()].strip()
+            prefix = re.sub(r"[\(\[\s,;–—\-]+$", "", prefix).strip()
+            if prefix:
+                clean_lines.append(prefix)
+            break
+        clean_lines.append(ln_s)
+    res = "\n".join(clean_lines).strip()
+    m = _NB_START_PATTERN.search(res)
+    if m:
+        res = res[:m.start()].strip()
+        res = re.sub(r"[\(\[\s,;–—\-]+$", "", res).strip()
+    cleaned = _clean_fragmented_text(res)
+    # Vérification finale après défragmentation
+    m = _NB_START_PATTERN.search(cleaned)
+    if m:
+        cleaned = cleaned[:m.start()].strip()
+        cleaned = re.sub(r"[\(\[\s,;–—\-]+$", "", cleaned).strip()
+    return cleaned
 
 
 def _normalize_option_texts(texts: list[str]) -> list[str]:
@@ -451,6 +498,7 @@ def _normalize_option_texts(texts: list[str]) -> list[str]:
         if t:
             # Fusionner les retours à la ligne en espaces pour les options multi-lignes
             t = re.sub(r"\s*\n+\s*", " ", t).strip()
+            t = strip_nb_references(t)
             if t:
                 out.append(t)
     return out
@@ -511,7 +559,7 @@ def _split_stem_embedded_numbered_options(full_question: str) -> tuple[str, list
             texts.append(chunk)
     if not stem:
         stem = _strip_question_number_prefix(full[: matches[0].start(1)].strip())
-    return stem, texts
+    return _normalize_stem_text(stem), _normalize_option_texts(texts)
 
 
 def _split_stem_embedded_bullet_options(full_question: str) -> tuple[str, list[str]]:
@@ -538,7 +586,7 @@ def _split_stem_embedded_bullet_options(full_question: str) -> tuple[str, list[s
     stem = "\n".join(lines[:first_bi]).strip()
     if not stem:
         stem = full
-    return stem, bullets
+    return _normalize_stem_text(stem), _normalize_option_texts(bullets)
 
 
 def _correct_indices_from_rep_vs_options(embedded: list[str], rep_cell: str) -> list[int]:
@@ -745,15 +793,32 @@ def _spec_is_plausible(spec: dict) -> bool:
     return 2 <= n_opts <= QUIZ_MAX_OPTIONS and bool((spec.get("prompt") or "").strip())
 
 
-def _spec_richness(spec: dict) -> tuple[int, int, int, int]:
-    """Score pour comparer deux specs : priorité à la présence de réponses correctes,
-    puis nombre d'options raisonnable (2-4), puis longueur de l'énoncé."""
-    n_opts = len(spec.get("texts") or [])
+def _spec_richness(spec: dict) -> tuple[int, int, int, int, int]:
+    """Score pour comparer deux specs : priorité à l'absence de corruption,
+    présence de réponses correctes, nombre d'options optimal (4),
+    et propreté de l'énoncé."""
+    prompt = (spec.get("prompt") or "").strip()
+    texts = spec.get("texts") or []
+    n_opts = len(texts)
     has_correct = 1 if spec.get("correct") else 0
-    # Pénaliser les specs avec trop d'options (> 4 est suspect pour un QCM)
-    opts_score = n_opts if n_opts <= 4 else 4 - (n_opts - 4)
-    prompt_len = len(spec.get("prompt") or "")
-    return (has_correct, opts_score, prompt_len, n_opts)
+    
+    # Détecter la corruption dans le prompt (options collées ou NB collé)
+    is_corrupt = 0
+    if re.search(r"\b[A-D]\s*[\)\.\:]", prompt) or _looks_like_nb_line(prompt):
+        is_corrupt = -1
+        
+    # Score du nombre d'options : 4 est l'idéal pour les QCM
+    if n_opts == 4:
+        opts_score = 4
+    elif 2 <= n_opts < 4:
+        opts_score = n_opts
+    else:
+        opts_score = max(0, 4 - (n_opts - 4) * 2)
+        
+    prompt_quality = 1 if (len(prompt) >= 20 and is_corrupt == 0) else 0
+    prompt_len_score = min(len(prompt), 300) if is_corrupt == 0 else -len(prompt)
+    
+    return (is_corrupt, has_correct, opts_score, prompt_quality, prompt_len_score)
 
 
 def _enrich_spec_with_continuation(spec: dict, continuation_parts: list[str], *, prepend: bool = False) -> dict:
@@ -982,10 +1047,30 @@ def _dedupe_and_clean_block_parts(parts: list[str]) -> list[str]:
     """Supprime doublons de page, lignes NB et fausses propositions « D) ABC »."""
     out: list[str] = []
     seen: set[str] = set()
+    in_nb_tail = False
     for raw in parts:
         p = (raw or "").strip()
-        if not p or re.match(r"^\s*NB\s*:", p, flags=re.IGNORECASE):
+        if not p:
             continue
+        if in_nb_tail:
+            if _looks_like_option_line(p) or _looks_like_new_question_start(p):
+                in_nb_tail = False
+            else:
+                continue
+        if _looks_like_nb_line(p):
+            cleaned = strip_nb_references(p)
+            if not cleaned:
+                in_nb_tail = True
+                continue
+            p = cleaned
+            in_nb_tail = True
+        else:
+            cleaned = strip_nb_references(p)
+            if not cleaned:
+                in_nb_tail = True
+                continue
+            p = cleaned
+
         if _is_false_option_line(p):
             continue
         key = _normalize_option_dedup_key(p)
@@ -998,11 +1083,15 @@ def _dedupe_and_clean_block_parts(parts: list[str]) -> list[str]:
 
 def _orphan_parts_safe_for_next_question(parts: list[str], *, has_response: bool = False) -> list[str]:
     safe: list[str] = []
+    in_nb = False
     for raw in parts:
         p = (raw or "").strip()
         if not p:
             continue
-        if re.match(r"^\s*NB\s*:", p, flags=re.IGNORECASE):
+        if _looks_like_nb_line(p):
+            in_nb = True
+            continue
+        if in_nb:
             continue
         if not has_response and (_looks_like_option_line(p) or _OPTION_LETTER_MARK.search(p)):
             continue
@@ -1060,6 +1149,7 @@ def _merge_split_option_parts(parts: list[str]) -> list[str]:
     """Fusionne les lignes de suite (ex. « disposition » après « A) … leur »)."""
     out: list[str] = []
     pending_option: str | None = None
+    in_nb_continuation = False
     
     for p in parts:
         p = p.strip()
@@ -1072,6 +1162,24 @@ def _merge_split_option_parts(parts: list[str]) -> list[str]:
             re.match(r"^\([A-Za-z]\)", p) or  # (A), (B)
             re.match(r"^[1-9][0-9]?\s*[\)\.\-\u2013:、]", p)  # 1), 2., etc.
         )
+        
+        if is_new_option:
+            in_nb_continuation = False
+        elif in_nb_continuation:
+            continue
+            
+        if _looks_like_nb_line(p):
+            cleaned = strip_nb_references(p)
+            if not cleaned:
+                if pending_option:
+                    clean_pending = strip_nb_references(pending_option)
+                    if clean_pending:
+                        out.append(clean_pending)
+                    pending_option = None
+                in_nb_continuation = True
+                continue
+            p = cleaned
+            in_nb_continuation = True
         
         # Si on a une option en attente qui semble incomplète
         if pending_option:
@@ -1126,9 +1234,16 @@ def _merge_split_option_parts(parts: list[str]) -> list[str]:
     
     # Ne pas oublier la dernière option en attente
     if pending_option:
-        out.append(pending_option)
+        clean_pending = strip_nb_references(pending_option)
+        if clean_pending:
+            out.append(clean_pending)
     
-    return out
+    clean_out: list[str] = []
+    for item in out:
+        c = strip_nb_references(item)
+        if c:
+            clean_out.append(c)
+    return clean_out
 
 
 def _block_part_fingerprint(text: str) -> str:
@@ -1762,7 +1877,7 @@ def apply_question_specs_to_quiz(
         if spec_texts < 2:
             logger.warning(f"Question #{spec_num} sautée : pas assez d'options ({spec_texts}) - prompt : {spec_prompt}")
             continue
-        prompt = _clip(_normalize_stem_text(spec["prompt"]), 4000)
+        prompt = _clip(_clean_prompt_text(spec["prompt"]), 4000)
         qnum = spec["number"]
         logger.info(f"Création question #{qnum} avec {spec_texts} options")
         qq = question_model.objects.create(

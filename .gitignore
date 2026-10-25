@@ -7,3 +7,5 @@ staticfiles/
 *_out.txt
 debug_pdf_import.py
 media/
+.vs/
+scripts/

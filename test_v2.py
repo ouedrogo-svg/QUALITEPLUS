@@ -5,12 +5,16 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from courses.quiz_import_v2 import clean_pdf_text, is_header_line
+from courses.quiz_import import (
+    _clean_fragmented_text as clean_pdf_text,
+    _is_header_line as is_header_line,
+    strip_nb_references,
+)
 
 test_cases = [
     {
         "name": "En-tête de table",
-        "input": "Cont Prép Adm Adj Cons répo rdre Questions Les crédits ouverts",
+        "input": "Cont Prép\nAdj Cons\nLes crédits ouverts",
         "should_not_contain": ["Cont Prép", "Adj Cons"],
         "should_contain": ["Les crédits ouverts"],
     },
@@ -29,6 +33,13 @@ test_cases = [
         "input": "nature économi\nque de dépenses",
         "should_contain": ["économique de"],
     },
+    {
+        "name": "Suppression NB multi-lignes",
+        "input": "Le 30 janvier de l'année en cours\nNB : Page 31 de l'instruction N°2019, portant application de la\ncomptabilité générale de l'Etat",
+        "use_strip_nb": True,
+        "should_contain": ["Le 30 janvier de l'année en cours"],
+        "should_not_contain": ["NB", "Page 31", "instruction", "comptabilité", "générale"],
+    },
 ]
 
 def run_tests():
@@ -42,24 +53,25 @@ def run_tests():
         print("-" * 40)
         print(f"Input: {case['input'][:60]}...")
         
-        result = clean_pdf_text(case['input'])
+        fn = strip_nb_references if case.get("use_strip_nb") else clean_pdf_text
+        result = fn(case['input'])
         print(f"Output: {result[:60]}...")
         
         passed = True
         if 'should_contain' in case:
             for expected in case['should_contain']:
                 if expected in result:
-                    print(f"  ✓ Contient: '{expected}'")
+                    print(f"  [OK] Contient: '{expected}'")
                 else:
-                    print(f"  ✗ Manque: '{expected}'")
+                    print(f"  [X] Manque: '{expected}'")
                     passed = False
         
         if 'should_not_contain' in case:
             for unwanted in case['should_not_contain']:
                 if unwanted not in result:
-                    print(f"  ✓ Ne contient pas: '{unwanted}'")
+                    print(f"  [OK] Ne contient pas: '{unwanted}'")
                 else:
-                    print(f"  ✗ Contient encore: '{unwanted}'")
+                    print(f"  [X] Contient encore: '{unwanted}'")
                     passed = False
         
         if not passed:
@@ -67,9 +79,9 @@ def run_tests():
     
     print("\n" + "=" * 60)
     if all_passed:
-        print("✓ TOUS LES TESTS PASSENT")
+        print("[OK] TOUS LES TESTS PASSENT")
     else:
-        print("✗ CERTAINS TESTS ÉCHOUENT")
+        print("[X] CERTAINS TESTS ECHOVENT")
     print("=" * 60)
     
     return all_passed

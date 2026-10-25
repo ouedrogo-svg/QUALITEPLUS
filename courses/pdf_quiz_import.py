@@ -18,6 +18,7 @@ from .quiz_import import (
     _enrich_spec_with_continuation,
     _finalize_quiz_specs,
     _first_ordre_row_index,
+    _looks_like_nb_line,
     _looks_like_option_line,
     _normalize_matrix_rows,
     _parse_ordre_cell,
@@ -144,6 +145,7 @@ def _iter_raw_tables_from_pdf(path: str):
 
     with pdfplumber.open(path) as pdf:
         for page in pdf.pages:
+            tables_found_on_page = False
             for settings in _TABLE_EXTRACT_PRESETS:
                 try:
                     if settings:
@@ -157,13 +159,16 @@ def _iter_raw_tables_from_pdf(path: str):
                     continue
                 for raw in raw_tables:
                     norm = _normalize_matrix_rows(raw)
-                    yield from _emit_normalized(norm)
+                    if norm:
+                        tables_found_on_page = True
+                        yield from _emit_normalized(norm)
 
-            for gap in (8.0, 12.0, 18.0, 26.0, 36.0):
-                pseudo = _words_cluster_matrix_from_page(page, gap)
-                if pseudo:
-                    norm = _normalize_matrix_rows(pseudo)
-                    yield from _emit_normalized(norm)
+            if not tables_found_on_page:
+                for gap in (12.0, 18.0):
+                    pseudo = _words_cluster_matrix_from_page(page, gap)
+                    if pseudo:
+                        norm = _normalize_matrix_rows(pseudo)
+                        yield from _emit_normalized(norm)
 
 
 def _append_rows_skip_page_duplicates(
@@ -453,7 +458,7 @@ def best_question_specs_from_correction_pdf(path: str) -> list[dict]:
                 for r in rows[:first_ordre_i]:
                     row_cc = _content_column_indices(i_o, i_r, len(r))
                     chunk = _row_merged_content(r, row_cc or content_cols)
-                    if chunk and not re.match(r"^\s*NB\s*:", chunk, flags=re.IGNORECASE):
+                    if chunk and not _looks_like_nb_line(chunk):
                         lead_parts.append(chunk)
                 if lead_parts and len(lead_parts) <= 12:
                     applied = False
