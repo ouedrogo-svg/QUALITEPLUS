@@ -139,7 +139,7 @@ def _strip_question_number_prefix(text: str) -> str:
 
 
 _OPTION_LETTER_MARK = re.compile(
-    r"(?:^|\n)\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\)\.\-\u2013:、])\s*\t?\s*",
+    r"(?:^|\n)\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\)\.\-\u2013:、](?![A-Za-z]\.))\s*\t?\s*",
     re.MULTILINE,
 )
 _ANSWER_KEY_ONLY_RE = re.compile(
@@ -173,6 +173,10 @@ def _strip_option_letter_prefix(text: str) -> str:
     # Normaliser les espaces
     original = t
     
+    # Sigle ou abréviation avec points consécutifs (ex: C.A.P, S.A., U.S.A.) : ne pas dépouiller la première lettre
+    if re.match(r"^[A-Za-z]\.[A-Za-z]\.", original):
+        return original
+
     # (A), (B), (a), (b) — lettre entre parenthèses
     t = re.sub(r"^\([A-Za-z]\)\s*", "", t)
     if t != original:
@@ -253,7 +257,7 @@ def _looks_like_answer_key_not_option(text: str) -> bool:
     """
     Vrai si le texte n'est qu'une clé de correction isolée (ex: 'A' seul ou 'Réponse: B'),
     mais FAUX pour les propositions de QCM légitimes comme 'ABC', 'AB', 'A et B'
-    qui désignent des choix de réponses multiples.
+    ou des sigles/mots en majuscules comme 'POKDBB', 'OKDB', 'CHS', 'UEMOA'.
     """
     t = re.sub(r"\s+", " ", (text or "").strip())
     if not t:
@@ -266,6 +270,9 @@ def _looks_like_answer_key_not_option(text: str) -> bool:
         return False
     if "'" in t or "’" in t:
         return False
+    # Choix combinés légitimes ("A et B", "A ou B", "A et C", etc.)
+    if re.search(r"\b(?:et|ou|and|or)\b", t, re.IGNORECASE):
+        return False
     compact = re.sub(r"\s+", "", t.upper())
     # Lettre seule isolée (ex: "A", "B") sans texte
     if len(compact) == 1 and "A" <= compact <= "Z":
@@ -273,8 +280,9 @@ def _looks_like_answer_key_not_option(text: str) -> bool:
     # Dans les QCM, "ABC", "AB", "BC", "CD", "ABCD", etc. sont des propositions légitimes ("Toutes les propositions A, B et C")
     if re.fullmatch(r"[A-D]{2,4}", compact):
         return False
+    # Sigles / mots en majuscules (ex: POKDBB, OKDB, CHS, COGES, UEMOA) : ce sont des propositions valides, pas des clés
     if re.fullmatch(r"[A-Z]{2,20}", compact):
-        return True
+        return False
     return bool(_ANSWER_KEY_ONLY_RE.match(t) and len(t) <= 40)
 
 
@@ -527,7 +535,7 @@ def _split_stem_and_embedded_options(full_question: str) -> tuple[str, list[str]
     matches = list(marks.finditer(full))
     if len(matches) < 2:
         marks = re.compile(
-            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\.\)\:、\-–])\s*",
+            r"(?:(?:^|\n)|(?<=[\s\?\!\:;«»]))\s*(?:\(([A-Za-z])\)|([A-Za-z])\s*[\.\)\:、\-–](?![A-Za-z]\.))\s*",
             re.MULTILINE,
         )
         matches = list(marks.finditer(full))
