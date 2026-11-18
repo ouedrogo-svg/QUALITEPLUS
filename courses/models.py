@@ -23,6 +23,17 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def is_gsp(self) -> bool:
+        slug = (self.slug or "").lower()
+        name = (self.name or "").lower()
+        return (
+            slug in ("gsp", "gps")
+            or "gsp" in name
+            or "sécurité pénitentiaire" in name
+            or "securite penitentiaire" in name
+        )
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)[:140]

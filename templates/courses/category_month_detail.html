@@ -46,7 +46,9 @@
           {% endif %}
           <span class="month-hub-row-actions">
             <a class="btn btn-secondary btn-sm" href="{{ corr.get_absolute_url }}#lecture-pdf">Lire en ligne</a>
-            <a class="btn btn-ghost btn-sm" href="{% url 'courses:correction_pdf_download' category.slug corr.year corr.month corr.pk %}">PDF</a>
+            {% if not category.is_gsp %}
+              <a class="btn btn-ghost btn-sm" href="{% url 'courses:correction_pdf_download' category.slug corr.year corr.month corr.pk %}">PDF</a>
+            {% endif %}
           </span>
         </li>
       {% endfor %}

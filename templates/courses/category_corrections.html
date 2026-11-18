@@ -8,7 +8,7 @@
     <span>{{ category.name }}</span>
   </div>
   <h1>Corrections — {{ category.name }}</h1>
-  <p class="lead">Téléchargez le corrigé PDF et entraînez-vous avec le quiz interactif (plusieurs bonnes réponses possibles par question).</p>
+  <p class="lead">{% if category.is_gsp %}Consultez le corrigé en ligne et entraînez-vous avec le quiz interactif (plusieurs bonnes réponses possibles par question).{% else %}Téléchargez le corrigé PDF et entraînez-vous avec le quiz interactif (plusieurs bonnes réponses possibles par question).{% endif %}</p>
 </div>
 <div class="container">
   {% if not user.is_authenticated %}

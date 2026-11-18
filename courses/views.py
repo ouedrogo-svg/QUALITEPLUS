@@ -627,6 +627,7 @@ def correction_detail(request, category_slug, year, month, pk):
             "correction": correction,
             "quiz": quiz,
             "n_quiz_questions": n_questions,
+            "can_download_pdf": not category.is_gsp,
         },
     )
 
@@ -644,6 +645,8 @@ def correction_pdf_inline(request, category_slug, year, month, pk):
 @login_required
 def correction_pdf_download(request, category_slug, year, month, pk):
     category, correction = _get_monthly_correction(request, category_slug, year, month, pk)
+    if category.is_gsp:
+        raise Http404("Le téléchargement du PDF de correction est désactivé pour la catégorie GSP.")
     if not _user_has_content_access(request.user, category, year, month):
         messages.error(
             request,
@@ -719,7 +722,7 @@ def correction_quiz(request, category_slug, year, month, pk):
             "list_url_name": "courses:category_corrections",
             "detail_url_name": "courses:correction_detail",
             "quiz_url_name": "courses:correction_quiz",
-            "pdf_download_url_name": "courses:correction_pdf_download",
+            "pdf_download_url_name": None if category.is_gsp else "courses:correction_pdf_download",
             "pdf_inline_url_name": "courses:correction_detail",
         },
     )
