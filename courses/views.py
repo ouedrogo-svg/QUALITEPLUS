@@ -747,6 +747,7 @@ def monthly_content(request, category_slug, year, month, pk):
             "category": category,
             "content": content,
             "period_label": content.period_label,
+            "can_download_pdf": not category.is_gsp,
         },
     )
 
@@ -770,6 +771,8 @@ def monthly_pdf_inline(request, category_slug, year, month, pk):
 @login_required
 def monthly_pdf_download(request, category_slug, year, month, pk):
     category = get_object_or_404(Category, slug=category_slug)
+    if category.is_gsp:
+        raise Http404("Le téléchargement du PDF de sujet est désactivé pour la catégorie GSP.")
     content = get_object_or_404(
         MonthlyCourseContent,
         pk=pk,
