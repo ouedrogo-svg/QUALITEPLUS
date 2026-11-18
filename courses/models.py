@@ -34,6 +34,28 @@ class Category(models.Model):
             or "securite penitentiaire" in name
         )
 
+    @property
+    def is_finances(self) -> bool:
+        slug = (self.slug or "").lower()
+        name = (self.name or "").lower()
+        return "finance" in slug or "finance" in name
+
+    @property
+    def is_tresor(self) -> bool:
+        slug = (self.slug or "").lower()
+        name = (self.name or "").lower()
+        return "tresor" in slug or "trésor" in slug or "tresor" in name or "trésor" in name
+
+    @property
+    def can_download_correction(self) -> bool:
+        """Autorise le téléchargement du PDF de correction sauf pour GSP, FINANCES et TRESOR."""
+        return not (self.is_gsp or self.is_finances or self.is_tresor)
+
+    @property
+    def can_download_subject(self) -> bool:
+        """Autorise le téléchargement du PDF de sujet sauf pour GSP."""
+        return not self.is_gsp
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.name)[:140]

@@ -13,7 +13,7 @@
   <p class="meta">{{ category.name }} — {{ correction.period_label }}</p>
   <p class="hero-actions document-actions">
     {% if correction.pdf %}
-      {% if not category.is_gsp %}
+      {% if category.can_download_correction %}
         <a class="btn btn-secondary" href="{% url 'courses:correction_pdf_download' category.slug correction.year correction.month correction.pk %}">Télécharger le corrigé (PDF)</a>
       {% endif %}
       <a class="btn btn-secondary" href="#lecture-pdf">Lire en ligne</a>

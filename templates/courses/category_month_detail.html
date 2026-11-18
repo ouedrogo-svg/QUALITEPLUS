@@ -24,7 +24,7 @@
           </a>
           <span class="month-hub-row-actions">
             <a class="btn btn-secondary btn-sm" href="{% url 'courses:monthly_content' category.slug c.year c.month c.pk %}#lecture-pdf">Lire en ligne</a>
-            {% if not category.is_gsp %}
+            {% if category.can_download_subject %}
               <a class="btn btn-ghost btn-sm" href="{% url 'courses:monthly_pdf_download' category.slug c.year c.month c.pk %}">Télécharger</a>
             {% endif %}
           </span>
@@ -48,7 +48,7 @@
           {% endif %}
           <span class="month-hub-row-actions">
             <a class="btn btn-secondary btn-sm" href="{{ corr.get_absolute_url }}#lecture-pdf">Lire en ligne</a>
-            {% if not category.is_gsp %}
+            {% if category.can_download_correction %}
               <a class="btn btn-ghost btn-sm" href="{% url 'courses:correction_pdf_download' category.slug corr.year corr.month corr.pk %}">PDF</a>
             {% endif %}
           </span>

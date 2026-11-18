@@ -14,7 +14,7 @@
   <p class="hero-actions document-actions">
     {% if content.pdf %}
       <a class="btn btn-primary" href="#lecture-pdf">Lire en ligne</a>
-      {% if not category.is_gsp %}
+      {% if category.can_download_subject %}
         <a class="btn btn-secondary" href="{% url 'courses:monthly_pdf_download' category.slug content.year content.month content.pk %}">Télécharger / enregistrer</a>
       {% endif %}
     {% endif %}

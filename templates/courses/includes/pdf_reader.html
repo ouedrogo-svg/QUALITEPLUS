@@ -7,7 +7,7 @@
          <a href="{{ pdf_inline_url }}" target="_blank">Cliquez ici pour l'ouvrir</a>.</p>
     </iframe>
   </div>
-  {% if not category.is_gsp %}
+  {% if can_download_pdf %}
   <p class="pdf-fallback-hint" style="margin-top: 10px; font-size: 0.9em; color: #64748b; text-align: center;">
     Note : Si le document ne s'affiche pas, vous pouvez utiliser le bouton <strong>Télécharger</strong> ci-dessus.
   </p>
