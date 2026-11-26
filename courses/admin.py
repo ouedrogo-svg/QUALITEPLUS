@@ -126,7 +126,7 @@ class CorrectionQuizInline(admin.StackedInline):
 
 @admin.register(MonthlyCorrection)
 class MonthlyCorrectionAdmin(admin.ModelAdmin):
-    list_display = ("category", "year", "month_display", "title", "has_pdf", "created_at")
+    list_display = ("category", "year", "month_display", "title", "has_pdf", "quiz_questions_count", "created_at")
     list_filter = ("category", "year", "month")
     list_select_related = ("category",)
     search_fields = ("title", "category__name")
@@ -161,6 +161,11 @@ class MonthlyCorrectionAdmin(admin.ModelAdmin):
     def has_pdf(self, obj):
         return bool(obj.pdf)
 
+    @admin.display(description="Questions quiz")
+    def quiz_questions_count(self, obj):
+        n = obj.quiz.questions.count() if hasattr(obj, "quiz") and obj.quiz else 0
+        return f"{n} question(s)" if n else "Aucun quiz (0)"
+
     def get_changeform_initial_data(self, request):
         today = date.today()
         return {"year": today.year, "month": today.month}
@@ -187,7 +192,8 @@ class MonthlyCorrectionAdmin(admin.ModelAdmin):
             return
         pk = obj.pk
 
-        if change and "pdf" not in form.changed_data:
+        has_quiz = hasattr(obj, "quiz") and obj.quiz and obj.quiz.questions.exists()
+        if change and "pdf" not in form.changed_data and has_quiz:
             return
 
         self.message_user(
@@ -198,13 +204,13 @@ class MonthlyCorrectionAdmin(admin.ModelAdmin):
 
         def sync_quiz_after_commit():
             from .models import MonthlyCorrection
-            from .pdf_quiz_import import sync_quiz_after_correction_saved
+            from .pdf_quiz_import import force_rebuild_quiz_from_correction_pdf
 
             try:
                 corr = MonthlyCorrection.objects.get(pk=pk)
             except MonthlyCorrection.DoesNotExist:
                 return
-            sync_quiz_after_correction_saved(corr)
+            force_rebuild_quiz_from_correction_pdf(corr)
 
         from .background_tasks import on_commit_in_background
 
@@ -441,7 +447,8 @@ class MonthlyExamAdmin(admin.ModelAdmin):
             return
         pk = obj.pk
 
-        if change and "pdf" not in form.changed_data:
+        has_quiz = hasattr(obj, "quiz") and obj.quiz and obj.quiz.questions.exists()
+        if change and "pdf" not in form.changed_data and has_quiz:
             return
 
         self.message_user(
@@ -452,13 +459,13 @@ class MonthlyExamAdmin(admin.ModelAdmin):
 
         def sync_quiz_after_commit():
             from .models import MonthlyExam
-            from .pdf_quiz_import import sync_quiz_after_exam_saved
+            from .pdf_quiz_import import force_rebuild_quiz_from_exam_pdf
 
             try:
                 exam = MonthlyExam.objects.get(pk=pk)
             except MonthlyExam.DoesNotExist:
                 return
-            sync_quiz_after_exam_saved(exam)
+            force_rebuild_quiz_from_exam_pdf(exam)
 
         from .background_tasks import on_commit_in_background
 

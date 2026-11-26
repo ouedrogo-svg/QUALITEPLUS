@@ -763,7 +763,7 @@ def _try_rebuild_quiz_for_document(
     quiz.refresh_from_db()
     n = quiz.questions.count()
     if n_new == 0:
-        cache.set(cache_key, 1, timeout=900)
+        cache.set(cache_key, 1, timeout=30)
     else:
         cache.delete(cache_key)
     return n

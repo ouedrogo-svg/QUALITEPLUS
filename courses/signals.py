@@ -1,8 +1,13 @@
+import logging
+from django.db import transaction
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.core.cache import cache
-from .models import UserSubscription, SubscriptionRequest
+from .models import UserSubscription, SubscriptionRequest, MonthlyCorrection, MonthlyExam
+from .background_tasks import defer_to_background
 from accounts.models import UserProfile
+
+logger = logging.getLogger(__name__)
 
 def invalidate_user_prefetch_cache(user_id):
     """Invalidate all cached info for a specific user to prevent stale views."""
@@ -29,3 +34,45 @@ def on_request_change(sender, instance, **kwargs):
 @receiver(post_delete, sender=UserProfile)
 def on_profile_change(sender, instance, **kwargs):
     invalidate_user_prefetch_cache(instance.user_id)
+
+
+@receiver(post_save, sender=MonthlyCorrection)
+def on_correction_post_save(sender, instance, created, **kwargs):
+    if not instance.pdf:
+        return
+    has_quiz = hasattr(instance, "quiz") and instance.quiz and instance.quiz.questions.exists()
+    if not has_quiz or created:
+        pk = instance.pk
+
+        def _sync():
+            from .models import MonthlyCorrection
+            from .pdf_quiz_import import force_rebuild_quiz_from_correction_pdf
+
+            try:
+                corr = MonthlyCorrection.objects.get(pk=pk)
+                force_rebuild_quiz_from_correction_pdf(corr)
+            except Exception:
+                logger.exception("Erreur lors de la synchronisation automatique du quiz pour la correction %s", pk)
+
+        transaction.on_commit(lambda: defer_to_background(_sync))
+
+
+@receiver(post_save, sender=MonthlyExam)
+def on_exam_post_save(sender, instance, created, **kwargs):
+    if not instance.pdf:
+        return
+    has_quiz = hasattr(instance, "quiz") and instance.quiz and instance.quiz.questions.exists()
+    if not has_quiz or created:
+        pk = instance.pk
+
+        def _sync():
+            from .models import MonthlyExam
+            from .pdf_quiz_import import force_rebuild_quiz_from_exam_pdf
+
+            try:
+                exam = MonthlyExam.objects.get(pk=pk)
+                force_rebuild_quiz_from_exam_pdf(exam)
+            except Exception:
+                logger.exception("Erreur lors de la synchronisation automatique du quiz pour l'examen %s", pk)
+
+        transaction.on_commit(lambda: defer_to_background(_sync))

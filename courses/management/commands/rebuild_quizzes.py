@@ -1,5 +1,6 @@
 import logging
 from django.core.management.base import BaseCommand
+from django.db.models import Count
 from courses.models import Category, MonthlyCorrection, MonthlyExam
 from courses.pdf_quiz_import import (
     force_rebuild_quiz_from_correction_pdf,
@@ -33,12 +34,18 @@ class Command(BaseCommand):
             action="store_true",
             help="Reconstruire uniquement les quiz des examens.",
         )
+        parser.add_argument(
+            "--missing-only",
+            action="store_true",
+            help="Ne générer le quiz que pour les corrections/examens qui n'ont pas encore de quiz (0 questions).",
+        )
 
     def handle(self, *args, **options):
         category_arg = options.get("category")
         rebuild_all = options.get("all")
         only_corrections = options.get("only_corrections")
         only_exams = options.get("only_exams")
+        missing_only = options.get("missing_only")
 
         if not category_arg and not rebuild_all:
             self.stdout.write(
@@ -76,6 +83,10 @@ class Command(BaseCommand):
                 corrections = MonthlyCorrection.objects.filter(
                     category=cat, pdf__isnull=False
                 ).exclude(pdf="").order_by("year", "month", "title")
+                if missing_only:
+                    corrections = corrections.annotate(
+                        n_q=Count("quiz__questions", distinct=True)
+                    ).filter(n_q=0)
                 self.stdout.write(f"Trouvé {corrections.count()} corrections avec PDF.")
 
                 for corr in corrections:
@@ -96,6 +107,10 @@ class Command(BaseCommand):
                 exams = MonthlyExam.objects.filter(
                     category=cat, pdf__isnull=False
                 ).exclude(pdf="").order_by("year", "month", "title")
+                if missing_only:
+                    exams = exams.annotate(
+                        n_q=Count("quiz__questions", distinct=True)
+                    ).filter(n_q=0)
                 self.stdout.write(f"Trouvé {exams.count()} examens avec PDF.")
 
                 for ex in exams:

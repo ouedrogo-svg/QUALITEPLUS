@@ -423,17 +423,35 @@ def category_month_detail(request, slug, year, month):
     courses = MonthlyCourseContent.objects.filter(
         category=category, year=year, month=month
     ).order_by("title", "id")
-    corrections = (
+    corrections = list(
         MonthlyCorrection.objects.filter(category=category, year=year, month=month)
         .annotate(n_quiz_questions=Count("quiz__questions", distinct=True))
         .order_by("title", "id")
     )
-    exams = (
+    for corr in corrections:
+        if corr.pdf and (getattr(corr, "n_quiz_questions", 0) or 0) == 0:
+            try:
+                n = try_rebuild_quiz_for_correction(corr)
+                if n > 0:
+                    corr.n_quiz_questions = n
+            except Exception:
+                pass
+
+    exams = list(
         MonthlyExam.objects.filter(category=category, year=year, month=month)
         .annotate(n_quiz_questions=Count("quiz__questions", distinct=True))
         .order_by("title", "id")
     )
-    if not courses.exists() and not corrections.exists() and not exams.exists():
+    for ex in exams:
+        if ex.pdf and (getattr(ex, "n_quiz_questions", 0) or 0) == 0:
+            try:
+                n = try_rebuild_quiz_for_exam(ex)
+                if n > 0:
+                    ex.n_quiz_questions = n
+            except Exception:
+                pass
+
+    if not courses.exists() and not corrections and not exams:
         raise Http404()
 
     return render(
