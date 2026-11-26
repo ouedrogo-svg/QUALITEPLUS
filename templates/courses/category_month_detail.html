@@ -43,14 +43,8 @@
           <a class="btn btn-secondary" href="{{ corr.get_absolute_url }}">
             {% if corr.title %}{{ corr.title }}{% else %}Corrigé #{{ corr.pk }}{% endif %}
           </a>
-          {% if corr.pdf %}
-            <a class="btn btn-primary btn-sm" href="{% url 'courses:correction_quiz' category.slug corr.year corr.month corr.pk %}">
-              {% if corr.n_quiz_questions %}
-                Quiz ({{ corr.n_quiz_questions }} q.)
-              {% else %}
-                Passer le Quiz
-              {% endif %}
-            </a>
+          {% if corr.n_quiz_questions %}
+            <a class="btn btn-primary btn-sm" href="{% url 'courses:correction_quiz' category.slug corr.year corr.month corr.pk %}">Quiz ({{ corr.n_quiz_questions }} q.)</a>
           {% endif %}
           <span class="month-hub-row-actions">
             <a class="btn btn-secondary btn-sm" href="{{ corr.get_absolute_url }}#lecture-pdf">Lire en ligne</a>

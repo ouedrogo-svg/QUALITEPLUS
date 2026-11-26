@@ -18,14 +18,8 @@
       {% endif %}
       <a class="btn btn-secondary" href="#lecture-pdf">Lire en ligne</a>
     {% endif %}
-    {% if correction.pdf %}
-      <a class="btn btn-primary" href="{% url 'courses:correction_quiz' category.slug correction.year correction.month correction.pk %}">
-        {% if n_quiz_questions %}
-          Quiz interactif ({{ n_quiz_questions }} question{{ n_quiz_questions|pluralize }})
-        {% else %}
-          Quiz interactif
-        {% endif %}
-      </a>
+    {% if n_quiz_questions %}
+      <a class="btn btn-primary" href="{% url 'courses:correction_quiz' category.slug correction.year correction.month correction.pk %}">Quiz interactif ({{ n_quiz_questions }} question{{ n_quiz_questions|pluralize }})</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'courses:category_month_detail' category.slug correction.year correction.month %}">Retour au mois</a>
   </p>
