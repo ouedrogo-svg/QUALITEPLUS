@@ -20,6 +20,8 @@
     {% endif %}
     {% if n_quiz_questions %}
       <a class="btn btn-primary" href="{% url 'courses:correction_quiz' category.slug correction.year correction.month correction.pk %}">Quiz interactif ({{ n_quiz_questions }} question{{ n_quiz_questions|pluralize }})</a>
+    {% elif correction.pdf %}
+      <a class="btn btn-primary" href="{% url 'courses:correction_quiz' category.slug correction.year correction.month correction.pk %}">Passer le Quiz</a>
     {% endif %}
     <a class="btn btn-ghost" href="{% url 'courses:category_month_detail' category.slug correction.year correction.month %}">Retour au mois</a>
   </p>

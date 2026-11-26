@@ -78,11 +78,13 @@ def _parse_reponses_cell(cell: str) -> list[int]:
     for p in parts:
         if not p:
             continue
-        if p.isdigit():
+        try:
             n = int(p)
             if n >= 1:
                 out.append(n)
             continue
+        except (ValueError, TypeError):
+            pass
         letters_only = re.sub(r"[^A-Z]", "", p)
         if letters_only and re.sub(r"[A-Z]", "", p) == "":
             for ch in letters_only:
@@ -1020,8 +1022,41 @@ def _rep_cell_from_row(row: list[str], i_r: int) -> str:
     return ""
 
 
-def _content_column_indices(i_o: int, i_r: int, row_width: int) -> list[int]:
+def _row_rep_col_and_content_indices(
+    row: list[str],
+    i_o: int,
+    default_i_r: int,
+) -> tuple[int | None, str, list[int]]:
+    """
+    Détermine pour une ligne donnée l'indice de colonne réponse, la réponse, et les colonnes de contenu.
+    Gère les tableaux à largeur variable (ex. pages 1-8 en 3 colonnes, page 9 en 8 colonnes).
+    """
+    rep_col: int | None = None
+    rep_val = ""
+    for j in range(len(row) - 1, i_o, -1):
+        c = (row[j] or "").strip()
+        if not c:
+            continue
+        if _cell_looks_like_reponse(c):
+            rep_col, rep_val = j, c
+        break
+
+    if rep_col is not None:
+        content_cols = list(range(i_o + 1, rep_col))
+    else:
+        max_col = len(row) if len(row) > default_i_r else min(default_i_r, len(row))
+        content_cols = list(range(i_o + 1, max_col))
+
+    return rep_col, rep_val, content_cols
+
+
+def _content_column_indices(i_o: int, i_r: int, row_width: int, row: list[str] | None = None) -> list[int]:
     """Colonnes d’énoncé / propositions (exclut N° d’ordre et colonne Réponses)."""
+    if row is not None:
+        _, _, cc = _row_rep_col_and_content_indices(row, i_o, i_r)
+        return cc
+    if row_width > i_r + 1:
+        return [j for j in range(i_o + 1, row_width)]
     return [j for j in range(i_o + 1, min(i_r, row_width))]
 
 
@@ -1500,9 +1535,9 @@ def _parse_oqr_multiline_blocks(
         while len(row) < width:
             row.append("")
         n_ord = _parse_ordre_from_row(row, i_o)
-        row_cc = [i_q] if i_q < len(row) else (_content_column_indices(i_o, i_r, width) or [i_q])
-        chunk = _row_merged_content(row, row_cc)
-        row_rep = _rep_cell_from_row(row, i_r)
+        _, rep_val, row_cc = _row_rep_col_and_content_indices(row, i_o, i_r)
+        chunk = _row_merged_content(row, row_cc or [i_q])
+        row_rep = rep_val or _rep_cell_from_row(row, i_r)
 
         if _valid_question_number(n_ord):
             flush()

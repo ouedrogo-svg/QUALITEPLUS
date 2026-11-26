@@ -45,6 +45,8 @@
           </a>
           {% if corr.n_quiz_questions %}
             <a class="btn btn-primary btn-sm" href="{% url 'courses:correction_quiz' category.slug corr.year corr.month corr.pk %}">Quiz ({{ corr.n_quiz_questions }} q.)</a>
+          {% elif corr.pdf %}
+            <a class="btn btn-primary btn-sm" href="{% url 'courses:correction_quiz' category.slug corr.year corr.month corr.pk %}">Passer le Quiz</a>
           {% endif %}
           <span class="month-hub-row-actions">
             <a class="btn btn-secondary btn-sm" href="{{ corr.get_absolute_url }}#lecture-pdf">Lire en ligne</a>

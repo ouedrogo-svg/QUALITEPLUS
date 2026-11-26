@@ -149,11 +149,9 @@ def _iter_raw_tables_from_pdf(path: str):
             for settings in _TABLE_EXTRACT_PRESETS:
                 try:
                     if settings:
-                        raw_tables = page.extract_tables(table_settings=settings) or []
+                        raw_tables = _extract_top_level_tables(page, settings=settings)
                     else:
-                        raw_tables = page.extract_tables() or []
-                except TypeError:
-                    raw_tables = page.extract_tables() or []
+                        raw_tables = _extract_top_level_tables(page)
                 except Exception:
                     logger.debug("extract_tables a échoué pour un réglage", exc_info=True)
                     continue
@@ -171,6 +169,36 @@ def _iter_raw_tables_from_pdf(path: str):
                         yield from _emit_normalized(norm)
 
 
+def _extract_top_level_tables(page, settings: dict | None = None) -> list[list[list[str]]]:
+    """Extrait uniquement les tableaux de premier niveau en éliminant les sous-tableaux imbriqués."""
+    try:
+        found = page.find_tables(table_settings=settings) if settings else page.find_tables()
+    except Exception:
+        found = []
+    if not found:
+        try:
+            return page.extract_tables(table_settings=settings) if settings else (page.extract_tables() or [])
+        except Exception:
+            return []
+    top_level = []
+    for i, t in enumerate(found):
+        # Un tableau est imbriqué s'il est contenu géométriquement dans un autre tableau plus grand
+        is_nested = any(
+            i != j and
+            t.bbox[0] >= o.bbox[0] - 2 and t.bbox[1] >= o.bbox[1] - 2 and
+            t.bbox[2] <= o.bbox[2] + 2 and t.bbox[3] <= o.bbox[3] + 2
+            for j, o in enumerate(found)
+        )
+        if not is_nested:
+            try:
+                extracted = t.extract()
+                if extracted:
+                    top_level.append(extracted)
+            except Exception:
+                pass
+    return top_level
+
+
 def _append_rows_skip_page_duplicates(
     consolidated: list[list[str]],
     new_rows: list[list[str]],
@@ -186,7 +214,7 @@ def _append_rows_skip_page_duplicates(
         return
 
     def _row_fp(row: list[str]) -> str:
-        cc = _content_column_indices(i_o, i_r, len(row))
+        cc = _content_column_indices(i_o, i_r, len(row), row=row)
         return _block_part_fingerprint(_row_merged_content(row, cc))
 
     for r in new_rows:
@@ -218,14 +246,14 @@ def _consolidated_correction_rows_from_pdf(path: str) -> list[list[str]]:
                 page_chunks: list[list[str]] = []
                 logger.info(f"[PDF] Traitement de la page {page_num}")
                 
-                # On essaie d'abord l'extraction standard
-                raw_tables = page.extract_tables() or []
+                # On essaie d'abord l'extraction des tableaux de premier niveau
+                raw_tables = _extract_top_level_tables(page)
                 logger.info(f"[PDF] Page {page_num}: {len(raw_tables)} tableaux extraits standard")
                 
                 # Si rien n'est trouvé, on essaie des stratégies plus agressives
                 if not raw_tables:
                     for settings in _TABLE_EXTRACT_PRESETS[1:4]: # Quelques presets de base
-                        raw_tables = page.extract_tables(table_settings=settings) or []
+                        raw_tables = _extract_top_level_tables(page, settings=settings)
                         if raw_tables:
                             logger.info(f"[PDF] Page {page_num}: {len(raw_tables)} tableaux extraits avec preset")
                             break
