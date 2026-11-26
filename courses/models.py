@@ -47,9 +47,15 @@ class Category(models.Model):
         return "tresor" in slug or "trésor" in slug or "tresor" in name or "trésor" in name
 
     @property
+    def is_impot(self) -> bool:
+        slug = (self.slug or "").lower()
+        name = (self.name or "").lower()
+        return "impot" in slug or "impôt" in slug or "impot" in name or "impôt" in name
+
+    @property
     def can_download_correction(self) -> bool:
-        """Autorise le téléchargement du PDF de correction sauf pour GSP, FINANCES et TRESOR."""
-        return not (self.is_gsp or self.is_finances or self.is_tresor)
+        """Autorise le téléchargement du PDF de correction sauf pour GSP, FINANCES, TRESOR et IMPOT."""
+        return not (self.is_gsp or self.is_finances or self.is_tresor or self.is_impot)
 
     @property
     def can_download_subject(self) -> bool:
